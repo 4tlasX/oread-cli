@@ -30,10 +30,10 @@ oread --api --port=4000      # Custom port
 ### Worlds & Sessions
 | Command | Description |
 |---|---|
-| `/worlds` | List all available worlds |
+| `/worlds` | Interactive world picker |
 | `/world <id>` | Load a world, start a new session, show recent sessions to resume |
 | `/world` | Show active world and current session |
-| `/sessions` | List all sessions |
+| `/sessions` | Interactive session picker |
 | `/session <id-or-name>` | Switch to a session by ID prefix or name |
 | `/session` | Show current session detail |
 | `/new [name]` | Create a new session with current world settings |
@@ -42,8 +42,9 @@ oread --api --port=4000      # Custom port
 | Command | Description |
 |---|---|
 | `/models` | List all models from all configured providers |
-| `/model` | Show active model |
-| `/model <name>` | Switch to a different model |
+| `/model` | Interactive model picker |
+| `/model <name>` | Switch to a specific model directly |
+| `/pull <name>` | Pull a model from Ollama or HuggingFace |
 
 ### Memory
 | Command | Description |
@@ -111,6 +112,18 @@ anything else     → Ollama     (local, no key needed)
 ```
 
 Switch mid-conversation with `/model <name>` — world, memory, and session stay the same.
+
+## Pulling models
+
+`/pull` accepts Ollama model names, HuggingFace repo paths, and full HuggingFace resolve URLs:
+
+```bash
+/pull llama3.2
+/pull hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF
+/pull https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+```
+
+A progress bar replaces the input while downloading. ESC cancels. On completion the model is automatically set as active.
 
 ## Worlds
 

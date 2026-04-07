@@ -46,6 +46,8 @@ if (withApi) {
 
 // Start terminal UI unless --no-repl
 if (!noRepl) {
+  const { printBanner } = await import('../src/ui/stdout.js');
+  printBanner();
   const { render } = await import('ink');
   const React = (await import('react')).default;
   const { default: App } = await import('../src/ui/App.jsx');

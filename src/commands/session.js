@@ -22,14 +22,22 @@ export function register(registry) {
       if (sessions.length === 0) return 'No sessions found. Use /new to create one.';
 
       const currentId = context.sessionManager.getCurrentSessionId();
-      const lines = sessions.map(s => {
-        const active = s.id === currentId ? ' ◀' : '  ';
-        const id = s.id.slice(0, 8);
-        const msgs = `${s.message_count} msg${s.message_count !== 1 ? 's' : ''}`;
-        const date = s.updated_at ? new Date(s.updated_at).toLocaleDateString() : '';
-        return `${active} ${id}  ${s.name.padEnd(28)}  ${msgs.padEnd(10)}${date}`;
-      });
-      return `Sessions:\n\n${lines.join('\n')}`;
+      return {
+        action: 'select',
+        content: {
+          label: 'Switch session',
+          items: sessions.map(s => {
+            const msgs = `${s.message_count} msg${s.message_count !== 1 ? 's' : ''}`;
+            const date = s.updated_at ? new Date(s.updated_at).toLocaleDateString() : '';
+            const active = s.id === currentId ? '  ◀' : '';
+            return {
+              label: `${s.id.slice(0, 8)}  ${s.name}  (${msgs}, ${date})${active}`,
+              value: s.id.slice(0, 8),
+            };
+          }),
+          resolveCommand: (value) => `/session ${value}`,
+        },
+      };
     }
   });
 

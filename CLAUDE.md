@@ -59,19 +59,23 @@ src/
     settingsManager.js    In-memory settings, 1s debounced write to data/templates/active.json
   session/
     sessionManager.js     createSession(), listSessions(), switchSession(), getCurrentSession()
-  ui/                     Ink components — NO direct DB or service imports here
-    App.jsx               Root: state (messages, streamingContent, isStreaming, commandOutput, status, sessionName)
+  ui/                     Ink components — NO direct DB or service imports here; access services via context object
+    App.jsx               Root: state (messages, streamingContent, isStreaming, status, sessionName, selectOverlay, pullState)
                           refreshStatus() called after every command + chat turn to keep status bar live
+                          InputBox / SelectOverlay / PullProgress are mutually exclusive — only one renders at a time
     StatusBar.jsx         Bottom bar (below input): world • model • session
-    ChatView.jsx          Message history using <Static> for completed messages; marginBottom={1} spacer
+    ChatView.jsx          Message history using <Static> for completed messages
     Message.jsx           Role labels padded to same width for column alignment
-    InputBox.jsx          Top + bottom rules only (no side borders), drawn with useStdout width
+    InputBox.jsx          Top + bottom borders only (Ink borderStyle="single"), drawn with useStdout width
+    CommandPicker.jsx     Autocomplete list shown above InputBox while typing a slash command
+    SelectOverlay.jsx     ink-select-input picker (› chevron indicator); shown for /model, /worlds, /sessions no-arg
+    PullProgress.jsx      Progress bar shown while /pull is downloading; ESC cancels
   commands/
     registry.js           CommandRegistry: Map<name, def>, execute() returns { output: string }
     index.js              Registers all command modules
-    world.js              /worlds — list; /world [id] — show active or load world + create session + show recent
-    model.js              /model [name] — show or switch; /models — all providers grouped
-    session.js            /sessions — list; /session [id-or-name] — show or switch; /new [name] — create
+    world.js              /worlds — SelectOverlay picker; /world [id] — show active or load world + create session + show recent
+    model.js              /model — SelectOverlay picker; /model <name> — switch; /models — all providers grouped; /pull <name-or-hf-url> — download
+    session.js            /sessions — SelectOverlay picker; /session [id-or-name] — show or switch; /new [name] — create
     memory.js             /memory [global], /forget, /search, /pin, /unpin
     notes.js              /notes [set|clear]
     settings.js           /settings [key], /set <key> <value>
@@ -108,7 +112,7 @@ docs/
 
 **Streaming shape.** All provider adapters yield `{ message: { content: string } }` — the same shape as the Ollama native response. `chatPipeline.js` reads `chunk.message?.content` and the UI reads the same chunks.
 
-**Command handlers return strings.** `registry.execute()` always returns `{ output: string }`. The UI renders `commandOutput` state. Commands never import Ink components.
+**Command handlers return strings or action objects.** `registry.execute()` returns `{ output, action?, content? }`. String results render as command output. Supported actions: `clear`, `pager` (content = text), `select` (content = `{ label, items, resolveCommand }`), `pull` (content = `{ modelName }`). Commands never import Ink components — the UI layer handles all rendering.
 
 **JSON data files are static imports.** `personalitySystemLoader.js` and `narrativeSystemLoader.js` use `import data from './file.json' with { type: 'json' }` so esbuild bundles the JSON inline. Never use `readFileSync` with `__dirname` in bundled code — paths resolve to `dist/` after bundling.
 
@@ -241,6 +245,10 @@ This logic lives in `src/services/providers/index.js` `resolveKey()`. Both `chat
 - **phi4-mini download.** Extraction is skipped gracefully if the model isn't ready — chat still works.
 - **Two models in Ollama.** `OLLAMA_MAX_LOADED_MODELS=2` prevents the extraction model from evicting the chat model on each turn.
 - **Status bar reactivity.** `App.jsx` calls `refreshStatus()` after every command and chat turn. This re-reads world name, model, and session name from context. Session name requires an async DB call — initialized via `useEffect` on mount, updated via `refreshStatus` thereafter.
+- **SelectOverlay vs CommandPicker.** `CommandPicker` shows while typing (inline autocomplete). `SelectOverlay` replaces `InputBox` entirely after a command returns `action: 'select'` — they are never on screen at the same time.
+- **PullProgress.** Also replaces `InputBox` while active. `pullCancelledRef` is a ref (not state) so the async generator loop can read it without stale closures. On cancel the ref is set and the loop breaks on next iteration — the Ollama pull continues server-side but the UI stops tracking it.
+- **HuggingFace URL normalization.** In `model.js` `normalizeModelName()`. Resolve URLs (`.../resolve/main/model.gguf`) become `hf.co/user/repo:model`. Plain `huggingface.co/` prefixes become `hf.co/`. Plain Ollama names are unchanged.
+- **context.ollamaService.** Added to the context object in `engine.js` so UI can call `pullModel()` without importing the service directly.
 - **Raw mode error in non-TTY.** Expected when running backgrounded or piped. Works correctly in an interactive terminal.
 - **API binds localhost only.** `127.0.0.1` — not accessible from the network without a reverse proxy.
 - **Legacy event format.** World state `ongoingEvents` may contain plain strings or `{ text, state }` objects. The `typeof` guard in `contextWindow.js` handles both — copy it exactly if reimplementing.

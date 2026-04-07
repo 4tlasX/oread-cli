@@ -19,8 +19,19 @@ export function register(registry) {
     handler: async (_args, context) => {
       const worlds = context.worldManager.listWorlds();
       if (worlds.length === 0) return 'No worlds found.';
-      const lines = worlds.map(w => `  ${w.id.padEnd(32)}${w.isUserTemplate ? '[user] ' : '       '}${w.name}`);
-      return `Available worlds:\n\n${lines.join('\n')}`;
+      const active = context.settingsManager.getAll();
+      const activeId = active?.meta?.templateId || null;
+      return {
+        action: 'select',
+        content: {
+          label: 'Load world',
+          items: worlds.map(w => ({
+            label: `${w.id}${w.id === activeId ? '  ◀' : ''}${w.isUserTemplate ? '  [user]' : ''}  —  ${w.name}`,
+            value: w.id,
+          })),
+          resolveCommand: (value) => `/world ${value}`,
+        },
+      };
     }
   });
 

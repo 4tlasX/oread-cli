@@ -1,9 +1,15 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Box } from 'ink';
 import ChatView from './ChatView.jsx';
 import InputBox from './InputBox.jsx';
+import StatusBar from './StatusBar.jsx';
 import CommandPicker from './CommandPicker.jsx';
+import SelectOverlay from './SelectOverlay.jsx';
+import PullProgress from './PullProgress.jsx';
 import Pager from './Pager.jsx';
+// Note: stdout.js helpers are intentionally NOT used post-mount.
+// Direct process.stdout.write after Ink mounts corrupts Ink's log-update line tracking,
+// causing duplicated InputBox/StatusBar. All post-mount messages flow through <Static> in ChatView.
 import { runChatTurn } from '../core/chatPipeline.js';
 import { context } from '../core/engine.js';
 import commandRegistry from '../commands/index.js';
@@ -19,14 +25,13 @@ function readStatusFromContext() {
 
 const COMMANDS = commandRegistry.getCommands();
 
-// Parse input into picker mode and tokens
 function parseInput(input) {
   if (!input.startsWith('/')) return { mode: 'none' };
   const hasTrailing = input.endsWith(' ');
   const words = input.trimEnd().split(/\s+/).filter(Boolean);
-  const w0 = words[0] || ''; // command token  e.g. '/session'
-  const w1 = words[1] || ''; // subcommand token e.g. 'delete'
-  const w2 = words[2] || ''; // arg token
+  const w0 = words[0] || '';
+  const w1 = words[1] || '';
+  const w2 = words[2] || '';
 
   if (words.length === 1 && !hasTrailing) return { mode: 'command', filter: w0 };
   if (words.length === 1 && hasTrailing)  return { mode: 'subcommand', cmd: w0, filter: '' };
@@ -37,22 +42,24 @@ function parseInput(input) {
 }
 
 export default function App() {
+  // messages kept in state for pager only — display goes direct to stdout
   const [messages, setMessages] = useState([]);
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [input, setInput] = useState('');
   const [pagerContent, setPagerContent] = useState('');
-  const [pagerPage,    setPagerPage]    = useState(0);
+  const [pagerPage, setPagerPage] = useState(0);
   const [status, setStatus] = useState(readStatusFromContext);
   const [sessionName, setSessionName] = useState('no session');
 
-  // Picker
   const [pickerIndex, setPickerIndex] = useState(0);
   const [dynamicItems, setDynamicItems] = useState([]);
+  const [selectOverlay, setSelectOverlay] = useState(null);
+  const [pullState, setPullState] = useState(null);
+  const pullCancelledRef = useRef(false);
 
   const parsed = isStreaming ? { mode: 'none' } : parseInput(input);
 
-  // Build the list shown in the picker
   const filteredCommands = (() => {
     if (parsed.mode === 'command') {
       return COMMANDS.filter(c => c.name.startsWith(parsed.filter.toLowerCase()));
@@ -80,7 +87,6 @@ export default function App() {
 
   const pickerOpen = parsed.mode !== 'none' && filteredCommands.length > 0;
 
-  // Fetch dynamic args whenever picker mode/cmd/sub changes
   useEffect(() => {
     if (parsed.mode === 'subcommand' || parsed.mode === 'arg') {
       const cmd = COMMANDS.find(c => c.name === parsed.cmd);
@@ -92,18 +98,19 @@ export default function App() {
     }
   }, [parsed.mode, parsed.cmd, parsed.sub]);
 
-  // Reset picker index when list changes
   useEffect(() => {
     setPickerIndex(0);
   }, [input]);
 
-  // On mount: load session name and run /status automatically
+  // On mount: load session + print initial status
   useEffect(() => {
     context.sessionManager?.getCurrentSession().then(s => {
       setSessionName(s?.name || 'no session');
     });
     commandRegistry.execute('/status', context).then(({ output }) => {
-      if (output) setMessages(prev => [...prev, { role: 'command', content: output }]);
+      if (output) {
+        setMessages(prev => [...prev, { role: 'command', content: output }]);
+      }
     });
   }, []);
 
@@ -113,6 +120,43 @@ export default function App() {
     setSessionName(session?.name || 'no session');
   }, []);
 
+  const startPull = useCallback(async (modelName) => {
+    pullCancelledRef.current = false;
+    setPullState({ modelName, progress: 0, status: 'Starting...', done: false, error: null });
+    try {
+      const stream = await context.ollamaService.pullModel(modelName);
+      for await (const chunk of stream) {
+        if (pullCancelledRef.current) break;
+        const progress = chunk.total ? Math.round((chunk.completed / chunk.total) * 100) : 0;
+        setPullState(prev => ({ ...prev, progress, status: chunk.status || '' }));
+      }
+      if (!pullCancelledRef.current) {
+        setPullState(prev => ({ ...prev, progress: 100, status: 'Complete!', done: true }));
+        context.settingsManager.set('general.selectedModel', modelName);
+        await refreshStatus();
+        setTimeout(() => {
+          setPullState(null);
+          setMessages(prev => [...prev, { role: 'command', content: `Pulled and set model: ${modelName}` }]);
+        }, 1500);
+      } else {
+        setPullState(null);
+      }
+    } catch (err) {
+      setPullState(prev => ({ ...prev, status: err.message, error: err.message, done: true }));
+      setTimeout(() => setPullState(null), 3000);
+    }
+  }, [refreshStatus]);
+
+  // Defensive: also re-read session name whenever the message log changes,
+  // in case a command updated the session without going through refreshStatus.
+  useEffect(() => {
+    let cancelled = false;
+    context.sessionManager?.getCurrentSession().then(s => {
+      if (!cancelled) setSessionName(s?.name || 'no session');
+    });
+    return () => { cancelled = true; };
+  }, [messages.length]);
+
   const handleSubmit = useCallback(async (value) => {
     const trimmed = value.trim();
     if (!trimmed) return;
@@ -120,9 +164,20 @@ export default function App() {
 
     if (trimmed.startsWith('/')) {
       const { output, action, content } = await commandRegistry.execute(trimmed, context);
-      if (action === 'clear') { setMessages([]); }
-      else if (action === 'pager' && content) { setPagerContent(content); setPagerPage(0); }
-      else if (output) setMessages(prev => [...prev, { role: 'command', content: output }]);
+      if (action === 'clear') {
+        setMessages([]);
+      } else if (action === 'pager' && content) {
+        setPagerContent(content);
+        setPagerPage(0);
+      } else if (action === 'select' && content) {
+        setSelectOverlay(content);
+        return;
+      } else if (action === 'pull' && content) {
+        startPull(content.modelName);
+        return;
+      } else if (output) {
+        setMessages(prev => [...prev, { role: 'command', content: output }]);
+      }
       await refreshStatus();
       return;
     }
@@ -139,7 +194,8 @@ export default function App() {
       }
       setMessages(prev => [...prev, { role: 'assistant', content: accumulated }]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: `[Error: ${err.message}]` }]);
+      const errMsg = `[Error: ${err.message}]`;
+      setMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
     } finally {
       setStreamingContent('');
       setIsStreaming(false);
@@ -147,7 +203,6 @@ export default function App() {
     }
   }, [refreshStatus]);
 
-  // Handle picker item selection
   const handlePickerSelect = useCallback((item) => {
     if (parsed.mode === 'command') {
       const cmd = COMMANDS.find(c => c.name === item.name);
@@ -171,11 +226,7 @@ export default function App() {
 
   return (
     <Box flexDirection="column" width="100%">
-      <ChatView
-        messages={messages}
-        streamingContent={streamingContent}
-        isStreaming={isStreaming}
-      />
+      <ChatView messages={messages} streamingContent={streamingContent} isStreaming={isStreaming} />
       {pagerContent && (
         <Pager
           content={pagerContent}
@@ -185,24 +236,48 @@ export default function App() {
           onClose={() => { setPagerContent(''); setPagerPage(0); }}
         />
       )}
-      <InputBox
-        value={input}
-        onChange={setInput}
-        onSubmit={handleSubmit}
-        isStreaming={isStreaming || !!pagerContent}
-        pickerOpen={pickerOpen && !pagerContent}
-        pickerIndex={clampedIndex}
-        filteredCommands={filteredCommands}
-        onPickerIndexChange={setPickerIndex}
-        onPickerSelect={() => {
-          const selected = filteredCommands[clampedIndex];
-          if (selected) handlePickerSelect(selected);
-        }}
-        onPickerClose={() => setInput('')}
-      />
-      {pickerOpen && !pagerContent && (
-        <CommandPicker commands={filteredCommands} selectedIndex={clampedIndex} />
+      {pullState ? (
+        <PullProgress
+          modelName={pullState.modelName}
+          progress={pullState.progress}
+          status={pullState.status}
+          done={pullState.done}
+          error={pullState.error}
+          onCancel={() => { pullCancelledRef.current = true; setPullState(null); }}
+        />
+      ) : selectOverlay ? (
+        <SelectOverlay
+          label={selectOverlay.label}
+          items={selectOverlay.items}
+          onSelect={(value) => {
+            setSelectOverlay(null);
+            handleSubmit(selectOverlay.resolveCommand(value));
+          }}
+          onClose={() => setSelectOverlay(null)}
+        />
+      ) : (
+        <>
+          <InputBox
+            value={input}
+            onChange={setInput}
+            onSubmit={handleSubmit}
+            isStreaming={isStreaming || !!pagerContent}
+            pickerOpen={pickerOpen && !pagerContent}
+            pickerIndex={clampedIndex}
+            filteredCommands={filteredCommands}
+            onPickerIndexChange={setPickerIndex}
+            onPickerSelect={() => {
+              const selected = filteredCommands[clampedIndex];
+              if (selected) handlePickerSelect(selected);
+            }}
+            onPickerClose={() => setInput('')}
+          />
+          {pickerOpen && !pagerContent && (
+            <CommandPicker commands={filteredCommands} selectedIndex={clampedIndex} />
+          )}
+        </>
       )}
+      <StatusBar worldName={status.worldName} model={status.model} sessionName={sessionName} />
     </Box>
   );
 }

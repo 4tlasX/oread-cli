@@ -5,12 +5,14 @@ import TextInput from 'ink-text-input';
 function useTerminalWidth() {
   const { stdout } = useStdout();
   const [cols, setCols] = useState(stdout?.columns || 80);
+
   useEffect(() => {
     if (!stdout) return;
     const onResize = () => setCols(stdout.columns || 80);
     stdout.on('resize', onResize);
     return () => stdout.off('resize', onResize);
   }, [stdout]);
+
   return cols;
 }
 
@@ -28,7 +30,6 @@ export default function InputBox({
 }) {
   const color = isStreaming ? 'gray' : 'white';
   const cols = useTerminalWidth();
-  const rule = '─'.repeat(Math.max(1, cols));
 
   // Swallow all input while streaming so keystrokes don't bleed to stdout
   useInput(() => {}, { isActive: isStreaming });
@@ -52,13 +53,25 @@ export default function InputBox({
   }, [pickerOpen, filteredCommands.length, onSubmit]);
 
   return (
-    <Box flexDirection="column" width={cols}>
-      <Text color={color}>{rule}</Text>
-      <Box paddingX={1}>
-        <Text color="gray">{'› '}</Text>
-        <TextInput value={value} onChange={onChange} onSubmit={handleSubmit} focus={!isStreaming} />
+    <Box
+      flexDirection="column"
+      width={cols}
+      height={3}
+      flexShrink={0}
+      overflow="hidden"
+      borderStyle="single"
+      borderTop
+      borderBottom
+      borderLeft={false}
+      borderRight={false}
+      borderColor={color}
+    >
+      <Box flexDirection="row" width={cols} height={1} paddingX={1} overflow="hidden">
+        <Text color="gray" wrap="truncate">{'❯ '}</Text>
+        <Box flexGrow={1} overflow="hidden">
+          <TextInput value={value} onChange={onChange} onSubmit={handleSubmit} focus={!isStreaming} />
+        </Box>
       </Box>
-      <Text color={color}>{rule}</Text>
     </Box>
   );
 }

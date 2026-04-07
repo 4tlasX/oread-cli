@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 
 export default function StatusBar({ worldName, model, sessionName }) {
   return (
-    <Box paddingX={1} justifyContent="flex-end">
+    <Box paddingX={1} justifyContent="flex-start">
       <Text color="white" dimColor>{sessionName || 'no session'}</Text>
       <Text color="gray">  •  </Text>
       <Text color="yellow">{model || 'no model'}</Text>

@@ -1,4 +1,5 @@
 import database from '../services/database.js';
+import ollamaService from '../services/ollama.js';
 import extractionModelManager from '../services/extractionModelManager.js';
 import * as worldManager from '../world/worldManager.js';
 import settingsManager from '../world/settingsManager.js';
@@ -9,6 +10,7 @@ import sessionManager from '../session/sessionManager.js';
  */
 export const context = {
   database: null,
+  ollamaService: null,
   extractionModelManager: null,
   worldManager: null,
   settingsManager: null,
@@ -37,6 +39,7 @@ export async function initialize() {
 
   // Populate context
   context.database = database;
+  context.ollamaService = ollamaService;
   context.extractionModelManager = extractionModelManager;
   context.worldManager = worldManager;
   context.settingsManager = settingsManager;
@@ -49,7 +52,7 @@ export async function initialize() {
     await sessionManager.createSession('Default Session', settings);
   } else {
     // Switch to most recently updated session
-    sessionManager.switchSession(sessions[0].id);
+    await sessionManager.switchSession(sessions[0].id);
   }
 
   _initialized = true;

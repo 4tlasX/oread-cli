@@ -58,37 +58,48 @@ export function register(registry) {
 
       const loaded = settings?.roleplay?._loadedCharacters || [];
       const allChars = settings?.roleplay?.characters || [];
-      const defaultChar = loaded[0]?.name || 'none';
+      const defaultChar = loaded[0]?.name || '—';
       const supportChars = allChars
         .filter(c => c.name && c.name !== defaultChar)
         .map(c => c.name)
-        .join(', ') || 'none';
+        .join(', ') || '—';
 
-      const lines = [
-        '─── World ───────────────────────────',
-        `  Name:      ${worldName}`,
-        `  Mode:      ${mode}`,
-        `  Character: ${defaultChar}`,
-        `  Support:   ${supportChars}`,
-        '',
-        '─── Session ─────────────────────────',
+      // Format a section: { title, rows: [[key, value], ...] }
+      // Keys are right-padded to the longest key in the section for tight alignment.
+      const section = (title, rows) => {
+        const width = Math.max(...rows.map(([k]) => k.length));
+        const body = rows.map(([k, v]) => `  ${k.padEnd(width)}   ${v}`);
+        return [title, ...body].join('\n');
+      };
+
+      const blocks = [
+        section('World', [
+          ['name',      worldName],
+          ['mode',      mode],
+          ['character', defaultChar],
+          ['support',   supportChars],
+        ]),
         session
-          ? `  Name:    ${session.name}\n  ID:      ${session.id.slice(0, 8)}...\n  Messages: ${session.message_count}`
-          : '  No active session',
-        '',
-        '─── Model ───────────────────────────',
-        `  Active:  ${model}`,
-        `  Extract: ${extractionStatus.model} (${extractionStatus.status})`,
-        '',
-        '─── Memory ──────────────────────────',
-        `  Facts:      ${factCount}`,
-        `  Summary:    ${hasSummary ? 'yes' : 'none'}`,
-        `  World state: ${hasWorldState ? 'yes' : 'none'}`,
-        `  Auto-summarize:    ${settings?.general?.autoSummarize !== false ? 'on' : 'off'}`,
-        `  Cross-session mem: ${settings?.general?.crossSessionMemory !== false ? 'on' : 'off'}`,
+          ? section('Session', [
+              ['name',     session.name],
+              ['id',       session.id.slice(0, 8)],
+              ['messages', String(session.message_count)],
+            ])
+          : 'Session\n  no active session',
+        section('Model', [
+          ['active',  model],
+          ['extract', `${extractionStatus.model} (${extractionStatus.status})`],
+        ]),
+        section('Memory', [
+          ['facts',          String(factCount)],
+          ['summary',        hasSummary ? 'yes' : '—'],
+          ['world state',    hasWorldState ? 'yes' : '—'],
+          ['auto-summarize', settings?.general?.autoSummarize !== false ? 'on' : 'off'],
+          ['cross-session',  settings?.general?.crossSessionMemory !== false ? 'on' : 'off'],
+        ]),
       ];
 
-      return lines.join('\n');
+      return blocks.join('\n\n');
     }
   });
 }

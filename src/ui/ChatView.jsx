@@ -1,29 +1,24 @@
 import React from 'react';
-import { Box, Text, Static } from 'ink';
+import { Box, Text } from 'ink';
 import Message from './Message.jsx';
-import Banner from './Banner.jsx';
 import { C } from './colors.js';
 
-const BANNER_ITEM = { _banner: true };
-
-export default function ChatView({ messages, streamingContent, isStreaming }) {
-
-  // Banner is the permanent first Static item — it ejects once and stays at the top of the log
-  const staticItems = [BANNER_ITEM, ...messages];
-
+// Render messages inline (no <Static>) so Ink fully owns the live region.
+// This makes resize handling clean: Ink redraws everything on every render,
+// nothing leaks into scrollback, and log-update's line counting stays accurate.
+export default function ChatView({ messages = [], streamingContent, isStreaming }) {
   return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Static items={staticItems}>
-        {(item, i) => {
-          if (item._banner) return <Banner key="banner" />;
-          if (item.role === 'command') return (
+    <Box flexDirection="column">
+      {messages.map((item, i) => {
+        if (item.role === 'command') {
+          return (
             <Box key={i} paddingX={2} marginY={1}>
               <Text color={C.white} wrap="wrap">{item.content}</Text>
             </Box>
           );
-          return <Message key={i} role={item.role} content={item.content} />;
-        }}
-      </Static>
+        }
+        return <Message key={i} role={item.role} content={item.content} />;
+      })}
 
       {isStreaming && streamingContent && (
         <Box marginY={1}>
@@ -33,7 +28,6 @@ export default function ChatView({ messages, streamingContent, isStreaming }) {
           </Text>
         </Box>
       )}
-
     </Box>
   );
 }
