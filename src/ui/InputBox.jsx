@@ -68,18 +68,11 @@ export default function InputBox({
       onSubmit(value);
       return;
     }
-    if (key.backspace) {
+    if (key.backspace || key.delete) {
       if (cursor > 0) {
         internalChange.current = true;
         onChange(value.slice(0, cursor - 1) + value.slice(cursor));
         setCursor(c => c - 1);
-      }
-      return;
-    }
-    if (key.delete) {
-      if (cursor < value.length) {
-        internalChange.current = true;
-        onChange(value.slice(0, cursor) + value.slice(cursor + 1));
       }
       return;
     }
