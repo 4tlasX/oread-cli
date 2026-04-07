@@ -1,0 +1,39 @@
+import React from 'react';
+import { Box, Text } from 'ink';
+import { C } from './colors.js';
+
+const VERSION = '0.1.0';
+
+const WEAVE = [
+  '   /\\/\\  ',
+  '  / /  \\ ',
+  ' / / /\\ \\',
+  ' \\ \\/ / /',
+  '  \\  / / ',
+  '   \\/\\/  ',
+];
+
+const OREAD = [
+  ' ██████╗ ██████╗ ███████╗ █████╗ ██████╗ ███████╗',
+  '██╔═══██╗██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝',
+  '██║   ██║██████╔╝█████╗  ███████║██║  ██║███████╗',
+  '██║   ██║██╔══██╗██╔══╝  ██╔══██║██║  ██║╚════██║',
+  '╚██████╔╝██║  ██║███████╗██║  ██║██████╔╝███████║',
+  ' ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝',
+];
+
+export default function Banner() {
+  return (
+    <Box flexDirection="column" marginTop={2} marginBottom={2}>
+      {WEAVE.map((mLine, i) => (
+        <Box key={i} flexDirection="row">
+          <Text color={C.teal}>{mLine}</Text>
+          <Text color={C.teal} bold>{'  ' + OREAD[i]}</Text>
+        </Box>
+      ))}
+      <Text>{' '}</Text>
+      <Text color={C.white}>{'  local-first LLM terminal  ·  Ollama · Anthropic · OpenAI · Gemini  ·  v' + VERSION}</Text>
+      <Text color={C.dim}>{'  /help for commands'}</Text>
+    </Box>
+  );
+}

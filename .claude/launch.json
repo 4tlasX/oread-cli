@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "oread-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dist/oread.js", "--api", "--no-repl", "--port", "3002"],
+      "port": 3002
+    }
+  ]
+}

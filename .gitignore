@@ -1,0 +1,14 @@
+node_modules/
+dist/
+
+# User data — runtime-generated, never commit
+data/oread.db
+data/oread.db-shm
+data/oread.db-wal
+data/templates/user/
+data/templates/active.json
+data/exports/
+data/.secret
+
+.env
+.claude/settings.local.json
