@@ -4,6 +4,14 @@ Local-first LLM interface with a Claude Code-style terminal UI. Chat with Ollama
 
 All memory is stored locally in SQLite. Cloud providers are opt-in. Nothing leaves your machine by default.
 
+### About
+CLI emerged from this original project: https://github.com/4tlasX/oread-companion
+
+The goal is to eventually make this the backend for the original GUI which will turn into a desktop app. 
+
+<img width="1111" height="593" alt="Screenshot 2026-04-06 at 10 37 07 PM" src="https://github.com/user-attachments/assets/b77dd237-67e8-4b52-a136-e91553ad33c6" />
+<img width="1105" height="591" alt="Screenshot 2026-04-06 at 10 37 24 PM" src="https://github.com/user-attachments/assets/dd650c0e-1592-4983-8fe7-0d21480f8a7c" />
+
 ## Quick start
 
 ```bash
