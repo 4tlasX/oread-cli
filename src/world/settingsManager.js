@@ -1,5 +1,13 @@
 import { getActive, setActive } from './worldManager.js';
 
+function getDefaultModel() {
+  const kindroidId = process.env.KINDROID_MODEL;
+  if (kindroidId) return `kindroid-${kindroidId}`;
+  const nomiId = process.env.NOMI_MODEL;
+  if (nomiId) return `nomi-${nomiId}`;
+  return process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
+}
+
 /**
  * In-memory settings manager with debounced persistence.
  */
@@ -15,6 +23,14 @@ class SettingsManager {
    */
   load() {
     this._settings = getActive() || this._defaultSettings();
+    // If the saved model is a placeholder (contains angle brackets), replace with the
+    // env-configured model so stale active.json values don't override the real ID.
+    const saved = this._settings?.general?.selectedModel;
+    if (saved && saved.includes('<') && saved.includes('>')) {
+      if (this._settings.general) {
+        this._settings.general.selectedModel = getDefaultModel();
+      }
+    }
   }
 
   /**
@@ -87,7 +103,7 @@ class SettingsManager {
     return {
       mode: 'normal',
       general: {
-        selectedModel: process.env.OLLAMA_CHAT_MODEL || 'llama3.2',
+        selectedModel: getDefaultModel(),
         contextBudget: 4096,
         autoSummarize: true,
         crossSessionMemory: true

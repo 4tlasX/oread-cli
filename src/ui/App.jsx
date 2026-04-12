@@ -236,6 +236,7 @@ export default function App() {
           onClose={() => { setPagerContent(''); setPagerPage(0); }}
         />
       )}
+      <StatusBar worldName={status.worldName} model={status.model} sessionName={sessionName} />
       {pullState ? (
         <PullProgress
           modelName={pullState.modelName}
@@ -257,27 +258,23 @@ export default function App() {
         />
       ) : (
         <>
+          {pickerOpen && !pagerContent && (
+            <CommandPicker commands={filteredCommands} selectedIndex={clampedIndex} />
+          )}
           <InputBox
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
             isStreaming={isStreaming || !!pagerContent}
-            pickerOpen={pickerOpen && !pagerContent}
+            pickerOpen={false}
             pickerIndex={clampedIndex}
-            filteredCommands={filteredCommands}
+            filteredCommands={[]}
             onPickerIndexChange={setPickerIndex}
-            onPickerSelect={() => {
-              const selected = filteredCommands[clampedIndex];
-              if (selected) handlePickerSelect(selected);
-            }}
-            onPickerClose={() => setInput('')}
+            onPickerSelect={() => {}}
+            onPickerClose={() => {}}
           />
-          {pickerOpen && !pagerContent && (
-            <CommandPicker commands={filteredCommands} selectedIndex={clampedIndex} />
-          )}
         </>
       )}
-      <StatusBar worldName={status.worldName} model={status.model} sessionName={sessionName} />
     </Box>
   );
 }

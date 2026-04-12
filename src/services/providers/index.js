@@ -3,18 +3,25 @@
  * Routes model names to the correct backend:
  *   claude-*              → Anthropic
  *   gpt-*, o1-*, o3-*    → OpenAI
+ *   gemini-*              → Gemini
+ *   nomi-*                → Nomi.ai
+ *   kindroid-*            → Kindroid.ai
  *   everything else       → Ollama (local)
  */
 import * as ollamaProvider from './ollama.js';
 import * as anthropicProvider from './anthropic.js';
 import * as openaiProvider from './openai.js';
 import * as geminiProvider from './gemini.js';
+import * as nomiProvider from './nomi.js';
+import * as kindroidProvider from './kindroid.js';
 import { getKey } from '../keyStore.js';
 
 const ENV_KEY = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   gemini: 'GEMINI_API_KEY',
+  nomi: 'NOMI_API_KEY',
+  kindroid: 'KINDROID_API_KEY',
 };
 
 function detectProvider(model) {
@@ -23,6 +30,8 @@ function detectProvider(model) {
   if (m.startsWith('claude-')) return 'anthropic';
   if (m.startsWith('gpt-') || m.startsWith('o1') || m.startsWith('o3')) return 'openai';
   if (m.startsWith('gemini-')) return 'gemini';
+  if (m.startsWith('nomi-')) return 'nomi';
+  if (m.startsWith('kindroid-')) return 'kindroid';
   return 'ollama';
 }
 
@@ -54,6 +63,14 @@ export async function* chat(model, messages, options = {}) {
     const apiKey = await resolveKey('gemini');
     if (!apiKey) throw new Error('No Gemini API key found. Set GEMINI_API_KEY in .env or use /key set gemini <key>');
     yield* geminiProvider.chat(model, messages, options, apiKey);
+  } else if (provider === 'nomi') {
+    const apiKey = await resolveKey('nomi');
+    if (!apiKey) throw new Error('No Nomi.ai API key found. Set NOMI_API_KEY in .env or use /key set nomi <key>');
+    yield* nomiProvider.chat(model, messages, options, apiKey);
+  } else if (provider === 'kindroid') {
+    const apiKey = await resolveKey('kindroid');
+    if (!apiKey) throw new Error('No Kindroid.ai API key found. Set KINDROID_API_KEY in .env or use /key set kindroid <key>');
+    yield* kindroidProvider.chat(model, messages, options, apiKey);
   } else {
     yield* ollamaProvider.chat(model, messages, options);
   }
@@ -108,6 +125,20 @@ export async function listAllModels() {
   const geminiKey = await resolveKey('gemini');
   if (geminiKey) {
     const models = await geminiProvider.listModels(geminiKey);
+    results.push(...models);
+  }
+
+  // Nomi — if key is set (DB or env)
+  const nomiKey = await resolveKey('nomi');
+  if (nomiKey) {
+    const models = await nomiProvider.listModels(nomiKey);
+    results.push(...models);
+  }
+
+  // Kindroid — if key is set (DB or env)
+  const kindroidKey = await resolveKey('kindroid');
+  if (kindroidKey) {
+    const models = await kindroidProvider.listModels(kindroidKey);
     results.push(...models);
   }
 

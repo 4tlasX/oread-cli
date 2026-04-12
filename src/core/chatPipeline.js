@@ -1,11 +1,13 @@
 import { v4 as uuidv4 } from 'uuid';
 import database from '../services/database.js';
-import { chat as providerChat } from '../services/providers/index.js';
+import { chat as providerChat, detectProvider } from '../services/providers/index.js';
 import { selectMessages } from '../services/contextWindow.js';
 import { processPostChat } from '../services/postChatProcessor.js';
 import { searchMessages, detectRecallTriggers } from '../services/memorySearch.js';
 import { getRelevantGlobalMemories } from '../services/globalMemory.js';
 import { buildSystemPrompt } from './promptBuilder.js';
+
+const EXTERNAL_PROVIDERS = ['nomi', 'kindroid'];
 
 /**
  * Save a message to the DB and increment the session message count.
@@ -89,60 +91,67 @@ export async function* runChatTurn({ userMessage, context }) {
 
   const contextBudget = settings?.general?.contextBudget || 4096;
   const mode = settings?.mode || 'normal';
+  const isExternalProvider = EXTERNAL_PROVIDERS.includes(detectProvider(model));
 
   // Build system prompt
   const isFirstMessage = dbMessages.filter(m => m.role === 'user').length === 1;
-  const systemPrompt = buildSystemPrompt(settings, mode, isFirstMessage);
+  const systemPrompt = isExternalProvider
+    ? null // External providers (Nomi/Kindroid) have their own system prompts
+    : buildSystemPrompt(settings, mode, isFirstMessage);
 
-  // Check for recall triggers
+  // Check for recall triggers (skip for external providers - they handle their own memory)
   let recalledMessages = [];
-  const { needsRecall, searchTerms } = detectRecallTriggers(userMessage);
-  if (needsRecall) {
-    for (const term of searchTerms) {
-      const results = await searchMessages(sessionId, term, { limit: 3 });
-      recalledMessages.push(...results);
+  if (!isExternalProvider) {
+    const { needsRecall, searchTerms } = detectRecallTriggers(userMessage);
+    if (needsRecall) {
+      for (const term of searchTerms) {
+        const results = await searchMessages(sessionId, term, { limit: 3 });
+        recalledMessages.push(...results);
+      }
+      // Deduplicate
+      const seen = new Set();
+      recalledMessages = recalledMessages.filter(m => {
+        const key = m.content.substring(0, 100);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     }
-    // Deduplicate
-    const seen = new Set();
-    recalledMessages = recalledMessages.filter(m => {
-      const key = m.content.substring(0, 100);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
   }
 
-  // Load cross-session global memory if enabled
+  // Load cross-session global memory if enabled (skip for external providers)
   let globalContext = null;
-  const crossSessionEnabled = settings?.general?.crossSessionMemory !== false;
-  if (crossSessionEnabled) {
-    const characterName = settings?.roleplay?.character?.name || settings?.roleplay?._loadedCharacters?.[0]?.name;
-    const userName = settings?.userPersona?.name;
-    if (characterName && userName) {
-      try {
-        const { memories, relationship } = await getRelevantGlobalMemories(
-          characterName, userName, userMessage, { limit: 10 }
-        );
-        if (relationship || memories.length > 0) {
-          globalContext = { memories, relationship, userName };
+  if (!isExternalProvider) {
+    const crossSessionEnabled = settings?.general?.crossSessionMemory !== false;
+    if (crossSessionEnabled) {
+      const characterName = settings?.roleplay?.character?.name || settings?.roleplay?._loadedCharacters?.[0]?.name;
+      const userName = settings?.userPersona?.name;
+      if (characterName && userName) {
+        try {
+          const { memories, relationship } = await getRelevantGlobalMemories(
+            characterName, userName, userMessage, { limit: 10 }
+          );
+          if (relationship || memories.length > 0) {
+            globalContext = { memories, relationship, userName };
+          }
+        } catch (err) {
+          console.error('Global memory load error:', err);
         }
-      } catch (err) {
-        console.error('Global memory load error:', err);
       }
     }
   }
 
-  // Run context window selection
+  // Run context window selection (skip complex context for external providers)
   const { messages: windowedMessages, contextBlock } = selectMessages({
     messages: dbMessages.map(m => ({ role: m.role, content: m.content, pinned: !!m.pinned })),
     systemPrompt: systemPrompt || '',
-    storyNotes,
-    extractedFacts: extractedFactsData,
+    storyNotes: isExternalProvider ? storyNotes : storyNotes,
+    extractedFacts: isExternalProvider ? [] : extractedFactsData,
     contextBudget,
-    rollingSummary,
-    worldState: worldStateData,
-    worldStateHistory,
-    characterStances: characterStancesData,
+    rollingSummary: isExternalProvider ? '' : rollingSummary,
+    worldState: isExternalProvider ? {} : worldStateData,
+    worldStateHistory: isExternalProvider ? [] : worldStateHistory,
+    characterStances: isExternalProvider ? {} : characterStancesData,
     recalledMessages,
     globalContext,
     mode
@@ -179,14 +188,17 @@ export async function* runChatTurn({ userMessage, context }) {
   });
 
   // Fire post-chat processing (fire-and-forget)
-  setImmediate(() => {
-    processPostChat({
-      sessionId,
-      userContent: userMessage,
-      assistantResponse,
-      model,
-      settings,
-      isDevelopment: process.env.NODE_ENV === 'development'
-    }).catch(err => console.error('postChatProcessor error:', err));
-  });
+  // Skip for external providers - they handle their own memory
+  if (!isExternalProvider) {
+    setImmediate(() => {
+      processPostChat({
+        sessionId,
+        userContent: userMessage,
+        assistantResponse,
+        model,
+        settings,
+        isDevelopment: process.env.NODE_ENV === 'development'
+      }).catch(err => console.error('postChatProcessor error:', err));
+    });
+  }
 }

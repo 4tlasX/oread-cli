@@ -3,7 +3,7 @@
  */
 import { setKey, removeKey, listConfiguredProviders } from '../services/keyStore.js';
 
-const SUPPORTED_PROVIDERS = ['anthropic', 'openai', 'gemini', 'groq'];
+const SUPPORTED_PROVIDERS = ['anthropic', 'openai', 'gemini', 'groq', 'nomi', 'kindroid'];
 
 export function register(registry) {
   registry.register({
@@ -22,13 +22,16 @@ export function register(registry) {
       if (!subcommand || subcommand === 'list') {
         const providers = await listConfiguredProviders();
         if (!providers.length) {
-          return [
-            'No API keys configured.',
-            '',
-            'To add a key:',
-            '  /key set anthropic sk-ant-...',
-            '  /key set openai sk-...',
-          ].join('\n');
+        return [
+          'No API keys configured.',
+          '',
+          'To add a key:',
+          '  /key set anthropic sk-ant-...',
+          '  /key set openai sk-...',
+          '  /key set gemini ...',
+          '  /key set nomi <uuid-api-key>',
+          '  /key set kindroid <kn_...-api-key>',
+        ].join('\n');
         }
         const lines = ['Configured providers:\n'];
         for (const p of providers) {

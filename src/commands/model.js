@@ -3,6 +3,15 @@
  */
 import { listAllModels } from '../services/providers/index.js';
 
+function getDefaultModel(settings) {
+  if (settings?.general?.selectedModel) return settings.general.selectedModel;
+  const kindroidId = process.env.KINDROID_MODEL;
+  if (kindroidId) return `kindroid-${kindroidId}`;
+  const nomiId = process.env.NOMI_MODEL;
+  if (nomiId) return `nomi-${nomiId}`;
+  return process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
+}
+
 function normalizeModelName(input) {
   let name = input.trim();
   // HuggingFace resolve URL: .../resolve/main/model.gguf → hf.co/user/repo:model
@@ -24,6 +33,8 @@ export function register(registry) {
     description: 'Show or set the active model. /model <name> to switch.',
     usage: '/model [name]',
     handler: async (args, context) => {
+      const settings = context.settingsManager?.getAll() || {};
+      const defaultModel = getDefaultModel(settings);
       if (args.length) {
         const model = args[0];
         context.settingsManager.set('general.selectedModel', model);
@@ -32,10 +43,9 @@ export function register(registry) {
       try {
         const models = await listAllModels();
         if (!models.length) {
-          const current = context.settingsManager.get('general.selectedModel') || process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
-          return `Current model: ${current}`;
+          return `Current model: ${defaultModel}`;
         }
-        const active = context.settingsManager.get('general.selectedModel') || process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
+        const active = context.settingsManager.get('general.selectedModel') || defaultModel;
         return {
           action: 'select',
           content: {
@@ -45,8 +55,7 @@ export function register(registry) {
           },
         };
       } catch {
-        const current = context.settingsManager.get('general.selectedModel') || process.env.OLLAMA_CHAT_MODEL || 'llama3.2';
-        return `Current model: ${current}`;
+        return `Current model: ${defaultModel}`;
       }
     }
   });
