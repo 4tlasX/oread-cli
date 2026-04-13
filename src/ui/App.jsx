@@ -102,8 +102,9 @@ export default function App() {
     setPickerIndex(0);
   }, [input]);
 
-  // On mount: load session + print initial status
+  // On mount: show welcome banner + load session + print initial status
   useEffect(() => {
+    setMessages([{ role: 'welcome', content: '' }]);
     context.sessionManager?.getCurrentSession().then(s => {
       setSessionName(s?.name || 'no session');
     });
