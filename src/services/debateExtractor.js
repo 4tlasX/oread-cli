@@ -1,10 +1,10 @@
 /**
- * Debate/argument tracking using Ollama inference.
+ * Debate/argument tracking via provider-routed inference.
  * Extracts stated positions, unresolved disagreements, and unanswered questions.
  * Runs periodically (every 10 turns) in both roleplay and utility modes.
  */
 
-import ollamaService from './ollama.js';
+import { chat } from './providers/index.js';
 
 const ROLEPLAY_DEBATE_PROMPT = `You are analyzing a roleplay conversation to track debates, disagreements, and open questions between characters.
 
@@ -67,7 +67,7 @@ export async function extractDebates(model, recentMessages, existingDebates = []
     contextPrompt += `\n\nPreviously tracked debates:\n${JSON.stringify(existingDebates)}`;
   }
 
-  const stream = await ollamaService.chat(model, [
+  const stream = chat(model, [
     { role: 'user', content: contextPrompt }
   ], {
     systemPrompt: mode === 'roleplay' ? ROLEPLAY_DEBATE_PROMPT : UTILITY_DEBATE_PROMPT,

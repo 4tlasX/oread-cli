@@ -102,16 +102,11 @@ export default function App() {
     setPickerIndex(0);
   }, [input]);
 
-  // On mount: show welcome banner + load session + print initial status
+  // On mount: show welcome banner + load session
   useEffect(() => {
     setMessages([{ role: 'welcome', content: '' }]);
     context.sessionManager?.getCurrentSession().then(s => {
       setSessionName(s?.name || 'no session');
-    });
-    commandRegistry.execute('/status', context).then(({ output }) => {
-      if (output) {
-        setMessages(prev => [...prev, { role: 'command', content: output }]);
-      }
     });
   }, []);
 
@@ -165,9 +160,7 @@ export default function App() {
 
     if (trimmed.startsWith('/')) {
       const { output, action, content } = await commandRegistry.execute(trimmed, context);
-      if (action === 'clear') {
-        setMessages([]);
-      } else if (action === 'pager' && content) {
+      if (action === 'pager' && content) {
         setPagerContent(content);
         setPagerPage(0);
       } else if (action === 'select' && content) {

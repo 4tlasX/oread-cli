@@ -1,9 +1,10 @@
 /**
- * Ollama-based conversation summarizer.
+ * Conversation summarizer.
  * Runs in background after assistant response — user never waits.
+ * Routes through the provider system so cloud models (claude-*, gpt-*, etc.) work correctly.
  */
 
-import ollamaService from './ollama.js';
+import { chat } from './providers/index.js';
 
 const SUMMARIZE_PROMPT = `You are a conversation summarizer. Condense the following conversation into a concise summary that preserves:
 - Key facts and decisions made
@@ -35,7 +36,7 @@ export async function summarizeMessages(model, messages, existingSummary = '') {
     userPrompt = `Conversation to summarize:\n${dialogue}`;
   }
 
-  const stream = await ollamaService.chat(model, [
+  const stream = chat(model, [
     { role: 'user', content: userPrompt }
   ], {
     systemPrompt: SUMMARIZE_PROMPT,

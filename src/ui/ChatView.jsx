@@ -1,9 +1,8 @@
 import React from 'react';
 import { Box, Text, Static } from 'ink';
 import Message from './Message.jsx';
+import Banner from './Banner.jsx';
 import { C } from './colors.js';
-
-const VERSION = '0.1.0';
 
 // Completed messages use <Static> so they're permanently committed to stdout
 // and live in the terminal's scrollback buffer. Only the streaming preview
@@ -14,13 +13,7 @@ export default function ChatView({ messages = [], streamingContent, isStreaming 
       <Static items={messages}>
         {(item, i) => {
           if (item.role === 'welcome') {
-            return (
-              <Box key={i} flexDirection="column" paddingX={2} marginY={1}>
-                <Text bold color={C.teal}>oread <Text color={C.dim}>v{VERSION}</Text></Text>
-                <Text color={C.white}>Local-first LLM terminal  ·  Ollama · Anthropic · OpenAI · Gemini</Text>
-                <Text color={C.dim}>/help for commands</Text>
-              </Box>
-            );
+            return <Banner key={i} />;
           }
           if (item.role === 'command') {
             return (

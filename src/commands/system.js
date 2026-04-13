@@ -4,16 +4,6 @@
 
 export function register(registry) {
   registry.register({
-    name: '/clear',
-    aliases: [],
-    description: 'Clear the screen without ending the session',
-    usage: '/clear',
-    handler: async (_args, _context) => {
-      return { output: '', action: 'clear' };
-    }
-  });
-
-  registry.register({
     name: '/help',
     aliases: ['/?'],
     description: 'Show available commands',
@@ -49,11 +39,9 @@ export function register(registry) {
       // Memory stats from session
       let factCount = 0;
       let hasSummary = false;
-      let hasWorldState = false;
       if (session) {
         try { factCount = JSON.parse(session.extracted_facts || '[]').length; } catch { /* */ }
         hasSummary = !!session.rolling_summary;
-        try { hasWorldState = Object.keys(JSON.parse(session.world_state || '{}')).length > 0; } catch { /* */ }
       }
 
       const loaded = settings?.roleplay?._loadedCharacters || [];
@@ -93,7 +81,6 @@ export function register(registry) {
         section('Memory', [
           ['facts',          String(factCount)],
           ['summary',        hasSummary ? 'yes' : '—'],
-          ['world state',    hasWorldState ? 'yes' : '—'],
           ['auto-summarize', settings?.general?.autoSummarize !== false ? 'on' : 'off'],
           ['cross-session',  settings?.general?.crossSessionMemory !== false ? 'on' : 'off'],
         ]),
