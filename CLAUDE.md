@@ -50,31 +50,35 @@ src/
     worldSnapshotService.js  createWorldSnapshot(), getWorldSnapshot(), seedWorldState()
     keyStore.js           AES-256-GCM encrypted API key storage in SQLite api_keys table
     providers/
-      index.js            Routes by model prefix: claude-* → Anthropic, gpt-* → OpenAI, else Ollama
+      index.js            Routes by model prefix: claude-* → Anthropic, gpt-* → OpenAI, nomi-* → Nomi.ai, kindroid-* → Kindroid.ai, else Ollama
       ollama.js           Adapter — wraps OllamaService.chat()
       anthropic.js        Adapter — @anthropic-ai/sdk streaming
       openai.js           Adapter — openai npm streaming
+      nomi.js             Adapter — Nomi.ai REST API (nomi-* prefix, NOMI_API_KEY / NOMI_MODEL)
+      kindroid.js         Adapter — Kindroid.ai REST API (kindroid-* prefix, KINDROID_API_KEY / KINDROID_MODEL)
+    responseGuard.js      sanitizeChunk() (per-chunk ANSI/escape strip) + detectInjection() (full-response prompt-injection scan)
   world/
-    worldManager.js       listWorlds(), loadWorld(id), saveUserWorld(), deleteUserWorld(), getActive(), setActive()
+    worldManager.js       listWorlds(), loadWorld(id), saveUserWorld(), deleteUserWorld(), getActive(), setActive(), updateUserWorldField(id, keyPath, value) — targeted field update without full rewrite; stale placeholder model IDs are sanitized on load
     settingsManager.js    In-memory settings, 1s debounced write to data/templates/active.json
   session/
     sessionManager.js     createSession(), listSessions(), switchSession(), getCurrentSession()
   ui/                     Ink components — NO direct DB or service imports here; access services via context object
     App.jsx               Root: state (messages, streamingContent, isStreaming, status, sessionName, selectOverlay, pullState)
                           refreshStatus() called after every command + chat turn to keep status bar live
-                          InputBox / SelectOverlay / PullProgress are mutually exclusive — only one renders at a time
-    StatusBar.jsx         Bottom bar (below input): world • model • session
+                          InputBox always visible; SelectOverlay and PullProgress layer on top when active
+    StatusBar.jsx         Bar above input: world • model • session; display values are ANSI-stripped
     ChatView.jsx          Message history using <Static> for completed messages
     Message.jsx           Role labels padded to same width for column alignment
     InputBox.jsx          Top + bottom borders only (Ink borderStyle="single"), drawn with useStdout width
-    CommandPicker.jsx     Autocomplete list shown above InputBox while typing a slash command
-    SelectOverlay.jsx     ink-select-input picker (› chevron indicator); shown for /model, /worlds, /sessions no-arg
+    CommandPicker.jsx     Autocomplete list shown below InputBox while typing; ASCII '> ' indicator, wrap="truncate", 5 items + scroll hints
+    SelectOverlay.jsx     Full-height picker (same style as CommandPicker) shown for /model, /worlds, /sessions no-arg
     PullProgress.jsx      Progress bar shown while /pull is downloading; ESC cancels
+    stdout.js             Direct stdout helpers (printWelcome, printCommandOutput, printNote, clearScreen) — writes outside Ink's live region
   commands/
-    registry.js           CommandRegistry: Map<name, def>, execute() returns { output: string }
+    registry.js           CommandRegistry: Map<name, def>, aliases supported, execute() returns { output: string }; /help uses two-column layout
     index.js              Registers all command modules
     world.js              /worlds — SelectOverlay picker; /world [id] — show active or load world + create session + show recent
-    model.js              /model — SelectOverlay picker; /model <name> — switch; /models — all providers grouped; /pull <name-or-hf-url> — download
+    model.js              /model — SelectOverlay picker + lists all providers grouped; /model <name> — switch + auto-saves to user world JSON; /models — alias; /pull <name-or-hf-url> — download
     session.js            /sessions — SelectOverlay picker; /session [id-or-name] — show or switch; /new [name] — create
     memory.js             /memory [global], /forget, /search, /pin, /unpin
     notes.js              /notes [set|clear]
@@ -233,10 +237,14 @@ Run `oread --api --no-repl`. The chat GUI talks to this CLI as its backend. `cha
 
 Cloud provider keys are resolved in this order:
 1. Encrypted DB key (set via `/key set <provider> <key>`)
-2. Environment variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
+2. Environment variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `NOMI_API_KEY`, `KINDROID_API_KEY`)
 3. Error — no key found
 
+Supported providers: `anthropic`, `openai`, `gemini`, `groq`, `nomi`, `kindroid`.
+
 This logic lives in `src/services/providers/index.js` `resolveKey()`. Both `chat()` and `listAllModels()` use it.
+
+Keys are validated before storage: printable ASCII only, 8–512 characters.
 
 ## Gotchas
 
@@ -245,10 +253,15 @@ This logic lives in `src/services/providers/index.js` `resolveKey()`. Both `chat
 - **phi4-mini download.** Extraction is skipped gracefully if the model isn't ready — chat still works.
 - **Two models in Ollama.** `OLLAMA_MAX_LOADED_MODELS=2` prevents the extraction model from evicting the chat model on each turn.
 - **Status bar reactivity.** `App.jsx` calls `refreshStatus()` after every command and chat turn. This re-reads world name, model, and session name from context. Session name requires an async DB call — initialized via `useEffect` on mount, updated via `refreshStatus` thereafter.
-- **SelectOverlay vs CommandPicker.** `CommandPicker` shows while typing (inline autocomplete). `SelectOverlay` replaces `InputBox` entirely after a command returns `action: 'select'` — they are never on screen at the same time.
+- **SelectOverlay vs CommandPicker.** `CommandPicker` shows while typing (inline autocomplete, below the input box). `SelectOverlay` appears after a command returns `action: 'select'` — both coexist with the always-visible `InputBox`; they are never on screen at the same time as each other.
 - **PullProgress.** Also replaces `InputBox` while active. `pullCancelledRef` is a ref (not state) so the async generator loop can read it without stale closures. On cancel the ref is set and the loop breaks on next iteration — the Ollama pull continues server-side but the UI stops tracking it.
 - **HuggingFace URL normalization.** In `model.js` `normalizeModelName()`. Resolve URLs (`.../resolve/main/model.gguf`) become `hf.co/user/repo:model`. Plain `huggingface.co/` prefixes become `hf.co/`. Plain Ollama names are unchanged.
 - **context.ollamaService.** Added to the context object in `engine.js` so UI can call `pullModel()` without importing the service directly.
 - **Raw mode error in non-TTY.** Expected when running backgrounded or piped. Works correctly in an interactive terminal.
 - **API binds localhost only.** `127.0.0.1` — not accessible from the network without a reverse proxy.
 - **Legacy event format.** World state `ongoingEvents` may contain plain strings or `{ text, state }` objects. The `typeof` guard in `contextWindow.js` handles both — copy it exactly if reimplementing.
+- **responseGuard in chatPipeline.** `sanitizeChunk()` is called on every streamed chunk before it reaches the UI. `detectInjection()` is called on the full assembled response before it is saved. Both live in `src/services/responseGuard.js`.
+- **Nomi / Kindroid model IDs.** These providers don't have named models — the "model name" (`nomi-<uuid>` or `kindroid-<id>`) encodes the companion ID. If no explicit model name is given, the adapter falls back to `NOMI_MODEL` / `KINDROID_MODEL` env vars. Stale `nomi-` / `kindroid-` IDs in `active.json` are stripped on load if no matching key is configured.
+- **Model auto-saved to user world.** When the user switches model via `/model`, `updateUserWorldField()` writes `settings.general.selectedModel` back into the active user world's JSON file so the choice persists across restarts. This only fires for user worlds (not built-in defaults).
+- **SelectOverlay and InputBox coexist.** Unlike the previous design, `InputBox` is always rendered. `SelectOverlay` and `PullProgress` render on top of it (not instead of it). This keeps the terminal layout stable during picker navigation.
+- **CommandPicker below input.** The command picker now appears below the input box (not above). It shows up to 5 items with `↑ N more` / `↓ N more` scroll indicators and uses ASCII `> ` as the selection marker to avoid wide-char alignment issues.
