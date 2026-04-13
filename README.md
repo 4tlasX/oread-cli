@@ -49,9 +49,9 @@ oread --api --port=4000      # Custom port
 ### Models
 | Command | Description |
 |---|---|
-| `/models` | List all models from all configured providers |
-| `/model` | Interactive model picker |
+| `/model` | Interactive model picker (lists all providers) |
 | `/model <name>` | Switch to a specific model directly |
+| `/models` | Alias for `/model` |
 | `/pull <name>` | Pull a model from Ollama or HuggingFace |
 
 ### Memory
@@ -80,6 +80,8 @@ oread --api --port=4000      # Custom port
 | `/key set anthropic <key>` | Store Anthropic API key (encrypted) |
 | `/key set openai <key>` | Store OpenAI API key (encrypted) |
 | `/key set gemini <key>` | Store Gemini API key (encrypted) |
+| `/key set nomi <key>` | Store Nomi.ai API key (encrypted) |
+| `/key set kindroid <key>` | Store Kindroid.ai API key (encrypted) |
 | `/key list` | Show configured providers |
 | `/key remove <provider>` | Delete a key |
 
@@ -113,10 +115,12 @@ Role labels align to a fixed column. Status bar sits below the input — world, 
 Model names are routed automatically by prefix:
 
 ```
-claude-*          → Anthropic  (ANTHROPIC_API_KEY or /key set anthropic)
-gpt-*, o1-*, o3-* → OpenAI     (OPENAI_API_KEY or /key set openai)
-gemini-*          → Gemini     (GEMINI_API_KEY or /key set gemini)
-anything else     → Ollama     (local, no key needed)
+claude-*          → Anthropic   (ANTHROPIC_API_KEY or /key set anthropic)
+gpt-*, o1-*, o3-* → OpenAI      (OPENAI_API_KEY or /key set openai)
+gemini-*          → Gemini      (GEMINI_API_KEY or /key set gemini)
+nomi-*            → Nomi.ai     (NOMI_API_KEY or /key set nomi)
+kindroid-*        → Kindroid.ai (KINDROID_API_KEY or /key set kindroid)
+anything else     → Ollama      (local, no key needed)
 ```
 
 Switch mid-conversation with `/model <name>` — world, memory, and session stay the same.
@@ -176,6 +180,9 @@ GET               /api/memory/relationships
 - Set `OREAD_SECRET` env var to use your own passphrase
 - API server binds to `127.0.0.1` only — not reachable from the network without a reverse proxy
 - Export filenames are sanitized to prevent path traversal
+- LLM responses are sanitized via `responseGuard`: strips ANSI/terminal escape sequences and flags prompt-injection patterns before display or persistence
+- FTS5 queries are hardened against injection; UUID validation on all session API routes
+- `settings_snapshot` is stripped from all API responses
 - No telemetry; no outbound connections except Ollama (local) and configured cloud providers
 
 ## Environment
@@ -193,6 +200,12 @@ OREAD_SECRET=                   # Optional: custom encryption passphrase
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
+NOMI_API_KEY=
+KINDROID_API_KEY=
+
+# Character/model IDs for companion providers
+NOMI_MODEL=                     # Nomi companion UUID
+KINDROID_MODEL=                 # Kindroid AI ID
 ```
 
 Copy `.env.example` to `.env` to configure.
