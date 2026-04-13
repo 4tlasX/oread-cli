@@ -1,5 +1,5 @@
 /**
- * Model commands: /model, /models, /pull
+ * Model commands: /model, /pull
  */
 import { listAllModels } from '../services/providers/index.js';
 import { updateUserWorldField } from '../world/worldManager.js';
@@ -29,9 +29,9 @@ function normalizeModelName(input) {
 
 export function register(registry) {
   registry.register({
-    name: '/model',
-    aliases: [],
-    description: 'Show or set the active model. /model <name> to switch.',
+    name: '/models',
+    aliases: ['/model'],
+    description: 'Browse and select a model. /model <name> to switch directly.',
     usage: '/model [name]',
     handler: async (args, context) => {
       const settings = context.settingsManager?.getAll() || {};
@@ -78,36 +78,4 @@ export function register(registry) {
     }
   });
 
-  registry.register({
-    name: '/models',
-    aliases: [],
-    description: 'List available models from all configured providers.',
-    usage: '/models',
-    handler: async (_args, _context) => {
-      try {
-        const models = await listAllModels();
-        if (!models.length) return 'No models found. Make sure Ollama is running.';
-
-        // Group by provider
-        const byProvider = {};
-        for (const m of models) {
-          const p = m.provider || 'ollama';
-          if (!byProvider[p]) byProvider[p] = [];
-          byProvider[p].push(m);
-        }
-
-        const lines = [];
-        for (const [provider, list] of Object.entries(byProvider)) {
-          lines.push(`\n${provider.toUpperCase()}:`);
-          for (const m of list) {
-            const size = m.size ? `  (${(m.size / 1e9).toFixed(1)}GB)` : '';
-            lines.push(`  ${m.id || m.name}${size}`);
-          }
-        }
-        return `Available models:${lines.join('\n')}`;
-      } catch (err) {
-        return `Failed to list models: ${err.message}`;
-      }
-    }
-  });
 }

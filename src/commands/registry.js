@@ -77,18 +77,35 @@ export class CommandRegistry {
    */
   getHelp() {
     const seen = new Set();
-    const lines = ['Available commands:\n'];
+    const defs = [];
 
     for (const def of this._commands.values()) {
       if (seen.has(def.name)) continue;
       seen.add(def.name);
+      defs.push(def);
+    }
+    defs.sort((a, b) => a.name.localeCompare(b.name));
 
+    // Build left column strings first so we can measure max width
+    const rows = defs.map(def => {
       const aliases = def.aliases && def.aliases.length > 0
         ? ` (${def.aliases.join(', ')})`
         : '';
-      lines.push(`  ${def.name}${aliases}`);
-      lines.push(`    ${def.description}`);
-      if (def.usage) lines.push(`    Usage: ${def.usage}`);
+      return { left: `${def.name}${aliases}`, description: def.description, usage: def.usage };
+    });
+
+    const colWidth = Math.max(...rows.map(r => r.left.length));
+    const indent = ' '.repeat(colWidth + 4); // 2 leading spaces + gap
+    const lines = ['Available commands:\n'];
+
+    for (const { left, description, usage } of rows) {
+      const descLines = description ? description.split('\n') : [];
+      const firstDesc = descLines[0] || '';
+      lines.push(`  ${left.padEnd(colWidth)}  ${firstDesc}`);
+      for (const dl of descLines.slice(1)) {
+        lines.push(`${indent}${dl}`);
+      }
+      if (usage) lines.push(`${indent}Usage: ${usage}`);
       lines.push('');
     }
 

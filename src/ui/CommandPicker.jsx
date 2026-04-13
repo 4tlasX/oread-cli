@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { C } from './colors.js';
 
 const MAX_VISIBLE = 5;
+const NAME_COL = 18;
 
 export default function CommandPicker({ commands, selectedIndex }) {
   const total = commands.length;
@@ -24,10 +25,9 @@ export default function CommandPicker({ commands, selectedIndex }) {
         const absIndex = start + i;
         const isSelected = absIndex === clampedIndex;
         return (
-          <Box key={cmd.name + absIndex} flexDirection="row" gap={1}>
-            <Text color={C.teal}>{isSelected ? '❯' : ' '}</Text>
-            <Text color={C.teal} bold={isSelected}>{cmd.name.padEnd(18)}</Text>
-            <Text color={C.dim}>{cmd.description}</Text>
+          <Box key={cmd.name + absIndex} flexDirection="row">
+            <Text color={C.teal} bold={isSelected}>{(isSelected ? '> ' : '  ') + cmd.name.padEnd(NAME_COL)}</Text>
+            <Text color={C.dim} wrap="truncate">  {(cmd.description || '').split('\n')[0]}</Text>
           </Box>
         );
       })}
