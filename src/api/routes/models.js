@@ -17,7 +17,12 @@ router.get('/', asyncHandler(async (_req, res) => {
 // POST /pull — pull an Ollama model (SSE progress)
 router.post('/pull', asyncHandler(async (req, res) => {
   const { modelName } = req.body;
-  if (!modelName) return res.status(400).json({ success: false, error: 'modelName required' });
+  if (!modelName || typeof modelName !== 'string') {
+    return res.status(400).json({ success: false, error: 'modelName required' });
+  }
+  if (modelName.length > 256) {
+    return res.status(400).json({ success: false, error: 'modelName too long' });
+  }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -33,7 +38,8 @@ router.post('/pull', asyncHandler(async (req, res) => {
     }
     sendEvent({ type: 'done', modelName });
   } catch (err) {
-    sendEvent({ type: 'error', error: err.message });
+    console.error('[api/models] pull error:', err.message);
+    sendEvent({ type: 'error', error: 'Failed to pull model.' });
   } finally {
     res.end();
   }

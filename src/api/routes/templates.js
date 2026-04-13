@@ -22,7 +22,10 @@ router.get('/active', asyncHandler(async (_req, res) => {
 // PUT /active — save active settings
 router.put('/active', asyncHandler(async (req, res) => {
   const { settings } = req.body;
-  if (!settings) return res.status(400).json({ success: false, error: 'settings required' });
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    return res.status(400).json({ success: false, error: 'settings must be a plain object' });
+  }
+  // setAll() already does a JSON round-trip to strip prototype-polluting keys.
   context.settingsManager.setAll(settings);
   res.json({ success: true });
 }));
@@ -36,8 +39,9 @@ router.delete('/active', asyncHandler(async (_req, res) => {
 
 // GET /:id — get a single template by id
 router.get('/:id', asyncHandler(async (req, res) => {
+  // loadWorld() validates the id internally; a null return means not found or invalid id.
   const world = await context.worldManager.loadWorld(req.params.id);
-  if (!world) throw new NotFoundError(`Template "${req.params.id}" not found`);
+  if (!world) throw new NotFoundError('Template not found');
   res.json({ success: true, template: world });
 }));
 
@@ -52,8 +56,9 @@ router.post('/user', asyncHandler(async (req, res) => {
 
 // DELETE /user/:id — delete a user template
 router.delete('/user/:id', asyncHandler(async (req, res) => {
+  // deleteUserWorld() validates the id internally.
   const deleted = await context.worldManager.deleteUserWorld(req.params.id);
-  if (!deleted) throw new NotFoundError(`User template "${req.params.id}" not found`);
+  if (!deleted) throw new NotFoundError('User template not found');
   res.json({ success: true });
 }));
 

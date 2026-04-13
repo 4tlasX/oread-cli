@@ -15,12 +15,27 @@ import database from './database.js';
  * @param {number} options.limit - Max results (default 5)
  * @returns {Array<{role: string, content: string, timestamp: string}>}
  */
-export async function searchMessages(sessionId, query, { limit = 5 } = {}) {
-  try {
-    // Use FTS5 match query — escape special characters for safety
-    const sanitized = query.replace(/['"]/g, '').trim();
-    if (!sanitized) return [];
+/** Maximum search query length — prevents large FTS5 scans. */
+const MAX_QUERY_LEN = 500;
 
+/**
+ * Build a safe FTS5 MATCH expression from a user-supplied query.
+ * Each whitespace-delimited token is wrapped in double-quotes, which
+ * suppresses FTS5 operator interpretation (AND/OR/NOT/NEAR/*).
+ */
+function buildFtsQuery(raw) {
+  const cleaned = raw.replace(/"/g, '').trim().slice(0, MAX_QUERY_LEN);
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
+  return tokens.map(t => `"${t}"`).join(' ');
+}
+
+export async function searchMessages(sessionId, query, { limit = 5 } = {}) {
+  if (!query || typeof query !== 'string') return [];
+  const ftsQuery = buildFtsQuery(query);
+  if (!ftsQuery) return [];
+
+  try {
     const results = await database.all(
       `SELECT m.role, m.content, m.timestamp
        FROM messages_fts fts
@@ -28,18 +43,18 @@ export async function searchMessages(sessionId, query, { limit = 5 } = {}) {
        WHERE messages_fts MATCH ? AND m.session_id = ?
        ORDER BY rank
        LIMIT ?`,
-      [sanitized, sessionId, limit]
+      [ftsQuery, sessionId, limit]
     );
     return results;
   } catch (err) {
     // Fallback to LIKE search if FTS5 fails
     console.error('FTS5 search failed, falling back to LIKE:', err.message);
-    const likeQuery = `%${query}%`;
+    const safe = query.slice(0, MAX_QUERY_LEN).replace(/[%_\\]/g, '\\$&');
     return database.all(
       `SELECT role, content, timestamp FROM messages
-       WHERE session_id = ? AND content LIKE ?
+       WHERE session_id = ? AND content LIKE ? ESCAPE '\\'
        ORDER BY timestamp DESC LIMIT ?`,
-      [sessionId, likeQuery, limit]
+      [sessionId, `%${safe}%`, limit]
     );
   }
 }

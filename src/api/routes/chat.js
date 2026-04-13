@@ -19,6 +19,12 @@ router.post('/', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, error: 'message too long (max 32000 chars)' });
   }
 
+  // Validate sessionId is a proper UUID before using it.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (sessionId && !UUID_RE.test(sessionId)) {
+    return res.status(400).json({ success: false, error: 'Invalid sessionId format' });
+  }
+
   // If a sessionId is provided, switch to that session
   if (sessionId) {
     await context.sessionManager.switchSession(sessionId);
@@ -53,7 +59,9 @@ router.post('/', asyncHandler(async (req, res) => {
 
     sendEvent({ type: 'done', content: fullResponse });
   } catch (err) {
-    sendEvent({ type: 'error', error: err.message });
+    // Log full error server-side; send only a generic message to the client.
+    console.error('[api/chat] stream error:', err.message);
+    sendEvent({ type: 'error', error: 'An error occurred during the chat request.' });
   } finally {
     res.end();
   }

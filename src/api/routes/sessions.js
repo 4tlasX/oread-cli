@@ -10,6 +10,18 @@ import { createWorldSnapshot, getWorldSnapshot, seedWorldState } from '../../ser
 
 const router = express.Router();
 
+/** Validate that a session/resource :id looks like a UUID. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidId(id) { return typeof id === 'string' && UUID_RE.test(id); }
+
+/** Strip the settings_snapshot column before sending sessions to clients.
+ *  It can be large and may contain model names, persona details, etc. */
+function safeSession(row) {
+  if (!row) return row;
+  const { settings_snapshot: _omit, ...rest } = row;
+  return rest;
+}
+
 // POST / — create session
 router.post('/', asyncHandler(async (req, res) => {
   const { name, character_name, character_mode, mode = 'normal', settings_snapshot } = req.body;
@@ -32,7 +44,7 @@ router.post('/', asyncHandler(async (req, res) => {
   );
 
   const session = await database.get('SELECT * FROM sessions WHERE id = ?', [sessionId]);
-  res.json({ success: true, session });
+  res.json({ success: true, session: safeSession(session) });
 }));
 
 // GET / — list sessions
@@ -50,18 +62,20 @@ router.get('/', asyncHandler(async (req, res) => {
     'SELECT COUNT(*) as count FROM sessions WHERE archived = ?', [isArchived]
   );
 
-  res.json({ success: true, sessions, total: count, limit: parsedLimit, offset: parsedOffset });
+  res.json({ success: true, sessions: sessions.map(safeSession), total: count, limit: parsedLimit, offset: parsedOffset });
 }));
 
 // GET /:id — get session
 router.get('/:id', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) throw new NotFoundError('Session not found');
   const session = await database.get('SELECT * FROM sessions WHERE id = ?', [req.params.id]);
   if (!session) throw new NotFoundError('Session not found');
-  res.json({ success: true, session });
+  res.json({ success: true, session: safeSession(session) });
 }));
 
 // PUT /:id — update session
 router.put('/:id', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) throw new NotFoundError('Session not found');
   const { name, archived } = req.body;
   const updates = [];
   const params = [];
@@ -76,11 +90,12 @@ router.put('/:id', asyncHandler(async (req, res) => {
 
   await database.run(`UPDATE sessions SET ${updates.join(', ')} WHERE id = ?`, params);
   const session = await database.get('SELECT * FROM sessions WHERE id = ?', [req.params.id]);
-  res.json({ success: true, session });
+  res.json({ success: true, session: safeSession(session) });
 }));
 
 // DELETE /:id — delete session
 router.delete('/:id', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) throw new NotFoundError('Session not found');
   const session = await database.get('SELECT id FROM sessions WHERE id = ?', [req.params.id]);
   if (!session) throw new NotFoundError('Session not found');
   await database.run('DELETE FROM sessions WHERE id = ?', [req.params.id]);
@@ -89,6 +104,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // GET /:id/messages — list messages
 router.get('/:id/messages', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) return res.status(404).json({ success: false, error: 'Not found' });
   const { limit = '100', offset = '0' } = req.query;
   const parsedLimit = Math.min(parseInt(limit) || 100, 500);
   const parsedOffset = Math.max(parseInt(offset) || 0, 0);
@@ -102,6 +118,7 @@ router.get('/:id/messages', asyncHandler(async (req, res) => {
 
 // GET /:id/notes — get story notes
 router.get('/:id/notes', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) throw new NotFoundError('Session not found');
   const session = await database.get('SELECT story_notes FROM sessions WHERE id = ?', [req.params.id]);
   if (!session) throw new NotFoundError('Session not found');
   res.json({ success: true, notes: session.story_notes || '' });
@@ -109,6 +126,7 @@ router.get('/:id/notes', asyncHandler(async (req, res) => {
 
 // PUT /:id/notes — save story notes
 router.put('/:id/notes', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) throw new NotFoundError('Session not found');
   const { notes } = req.body;
   await database.run(
     'UPDATE sessions SET story_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
@@ -119,6 +137,7 @@ router.put('/:id/notes', asyncHandler(async (req, res) => {
 
 // GET /:id/world-state — get world state
 router.get('/:id/world-state', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) throw new NotFoundError('Session not found');
   const session = await database.get(
     'SELECT world_state, world_state_history, character_stances FROM sessions WHERE id = ?',
     [req.params.id]
@@ -137,8 +156,10 @@ router.get('/:id/world-state', asyncHandler(async (req, res) => {
 
 // GET /:id/search — FTS5 message search
 router.get('/:id/search', asyncHandler(async (req, res) => {
+  if (!isValidId(req.params.id)) throw new NotFoundError('Session not found');
   const { q, limit = '10' } = req.query;
   if (!q) return res.status(400).json({ success: false, error: 'q parameter required' });
+  if (q.length > 500) return res.status(400).json({ success: false, error: 'q too long (max 500 chars)' });
 
   const results = await searchMessages(req.params.id, q, { limit: parseInt(limit) || 10 });
   res.json({ success: true, results });

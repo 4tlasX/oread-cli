@@ -28,7 +28,7 @@ export function createServer() {
     credentials: true,
   }));
 
-  app.use(express.json({ limit: '5mb' }));
+  app.use(express.json({ limit: '256kb' }));
 
   // Health check
   app.get('/api/health', (_req, res) => {

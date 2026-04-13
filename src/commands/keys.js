@@ -52,6 +52,13 @@ export function register(registry) {
         if (!SUPPORTED_PROVIDERS.includes(provider)) {
           return `Unsupported provider "${provider}". Supported: ${SUPPORTED_PROVIDERS.join(', ')}`;
         }
+        if (key.length < 8 || key.length > 512) {
+          return 'API key must be between 8 and 512 characters.';
+        }
+        // Allow only printable ASCII (no control characters or whitespace)
+        if (!/^[\x21-\x7E]+$/.test(key)) {
+          return 'API key contains invalid characters (must be printable ASCII, no spaces).';
+        }
 
         await setKey(provider, key);
         return `API key for ${provider} saved (encrypted).`;

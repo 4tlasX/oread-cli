@@ -108,7 +108,9 @@ export function register(registry) {
       const session = await context.sessionManager.getCurrentSession();
       if (!session) return 'No active session.';
 
-      const query = args.join(' ').toLowerCase();
+      const raw = args.join(' ');
+      if (raw.length > 500) return 'Query too long (max 500 characters).';
+      const query = raw.toLowerCase();
       const facts = session.extracted_facts
         ? JSON.parse(session.extracted_facts)
         : [];
@@ -143,6 +145,7 @@ export function register(registry) {
       if (!sessionId) return 'No active session.';
 
       const query = args.join(' ');
+      if (query.length > 500) return 'Query too long (max 500 characters).';
       const results = await searchMessages(sessionId, query, { limit: 10 });
 
       if (!results.length) return `No messages matched "${query}".`;

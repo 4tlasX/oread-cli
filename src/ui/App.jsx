@@ -246,33 +246,34 @@ export default function App() {
           error={pullState.error}
           onCancel={() => { pullCancelledRef.current = true; setPullState(null); }}
         />
-      ) : selectOverlay ? (
-        <SelectOverlay
-          label={selectOverlay.label}
-          items={selectOverlay.items}
-          onSelect={(value) => {
-            setSelectOverlay(null);
-            handleSubmit(selectOverlay.resolveCommand(value));
-          }}
-          onClose={() => setSelectOverlay(null)}
-        />
       ) : (
         <>
-          {pickerOpen && !pagerContent && (
-            <CommandPicker commands={filteredCommands} selectedIndex={clampedIndex} />
-          )}
           <InputBox
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
-            isStreaming={isStreaming || !!pagerContent}
-            pickerOpen={false}
+            isStreaming={isStreaming || !!pagerContent || !!selectOverlay}
+            pickerOpen={pickerOpen && !pagerContent && !selectOverlay}
             pickerIndex={clampedIndex}
-            filteredCommands={[]}
+            filteredCommands={filteredCommands}
             onPickerIndexChange={setPickerIndex}
-            onPickerSelect={() => {}}
-            onPickerClose={() => {}}
+            onPickerSelect={handlePickerSelect}
+            onPickerClose={() => { setInput(''); setPickerIndex(0); }}
           />
+          {selectOverlay && (
+            <SelectOverlay
+              label={selectOverlay.label}
+              items={selectOverlay.items}
+              onSelect={(value) => {
+                setSelectOverlay(null);
+                handleSubmit(selectOverlay.resolveCommand(value));
+              }}
+              onClose={() => setSelectOverlay(null)}
+            />
+          )}
+          {pickerOpen && !pagerContent && !selectOverlay && (
+            <CommandPicker commands={filteredCommands} selectedIndex={clampedIndex} />
+          )}
         </>
       )}
     </Box>

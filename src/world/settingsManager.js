@@ -61,6 +61,12 @@ class SettingsManager {
     if (!this._settings) this.load();
 
     const parts = keyPath.split('.');
+    // Block prototype-pollution vectors before any traversal.
+    const DANGEROUS = new Set(['__proto__', 'constructor', 'prototype']);
+    for (const part of parts) {
+      if (DANGEROUS.has(part)) throw new Error(`Invalid key path: "${keyPath}"`);
+    }
+
     let current = this._settings;
     for (let i = 0; i < parts.length - 1; i++) {
       if (current[parts[i]] == null) current[parts[i]] = {};
@@ -73,10 +79,12 @@ class SettingsManager {
 
   /**
    * Replace entire settings object.
+   * JSON round-trip strips any __proto__ / constructor / prototype keys
+   * that could cause prototype pollution if the caller passed untrusted input.
    * @param {Object} settings
    */
   setAll(settings) {
-    this._settings = settings;
+    this._settings = settings == null ? null : JSON.parse(JSON.stringify(settings));
     this._scheduleSave();
   }
 

@@ -185,27 +185,33 @@ function buildUtilityPrompt(settings) {
 
   const sections = [];
 
+  // CONSTRAINTS FIRST — placing these at the top gives them maximum weight.
+  // A persona established before its constraints will override them; constraints
+  // established first act as hard rails the persona must operate within.
+  const constraintBlocks = [];
+  if (guardrails.negativeConstraints) {
+    constraintBlocks.push(guardrails.negativeConstraints);
+  }
+  const bannedWords = userPersona.linguisticFilters?.bannedWords || [];
+  const bannedPhrases = userPersona.linguisticFilters?.bannedPhrases || [];
+  if (bannedWords.length > 0 || bannedPhrases.length > 0) {
+    let filters = `LINGUISTIC FILTERS — ABSOLUTE:\n`;
+    if (bannedWords.length > 0) filters += `BANNED WORDS (never use): ${bannedWords.join(', ')}.\n`;
+    if (bannedPhrases.length > 0) filters += `BANNED PHRASES (never use): ${bannedPhrases.join(', ')}.\n`;
+    constraintBlocks.push(filters.trim());
+  }
+  if (constraintBlocks.length > 0) {
+    sections.push(`ABSOLUTE CONSTRAINTS — THESE OVERRIDE EVERYTHING ELSE. NO EXCEPTIONS:\n${constraintBlocks.join('\n\n')}`);
+  }
+
   if (assistantIdentity.persona) {
     sections.push(`YOUR IDENTITY:\n${assistantIdentity.persona}`);
   }
   if (assistantIdentity.communicationStyle) {
     sections.push(`COMMUNICATION STYLE:\n${assistantIdentity.communicationStyle}`);
   }
-  if (guardrails.negativeConstraints) {
-    sections.push(`CONSTRAINTS (DO NOT):\n${guardrails.negativeConstraints}`);
-  }
   if (guardrails.formattingPreferences) {
-    sections.push(`FORMATTING PREFERENCES:\n${guardrails.formattingPreferences}`);
-  }
-
-  // Linguistic filters
-  const bannedWords = userPersona.linguisticFilters?.bannedWords || [];
-  const bannedPhrases = userPersona.linguisticFilters?.bannedPhrases || [];
-  if (bannedWords.length > 0 || bannedPhrases.length > 0) {
-    let filters = `LINGUISTIC FILTERS (STRICT NEGATIVE CONSTRAINTS):\n`;
-    if (bannedWords.length > 0) filters += `BANNED WORDS: ${bannedWords.join(', ')}.\n`;
-    if (bannedPhrases.length > 0) filters += `BANNED PHRASES: ${bannedPhrases.join(', ')}.\n`;
-    sections.push(filters.trim());
+    sections.push(`FORMATTING:\n${guardrails.formattingPreferences}`);
   }
 
   // User info
@@ -220,21 +226,15 @@ function buildUtilityPrompt(settings) {
     parts.push(`CURRENT DATE & TIME: ${timeString}`);
   }
   if (parts.length > 0) {
-    sections.push(`USER INFORMATION:\n${parts.join('\n')}`);
+    sections.push(`USER:\n${parts.join('\n')}`);
   }
 
   sections.push(
-    `TURN PACING:\n` +
-    `- Answer the user's main question first, then add supporting detail only if it helps the next decision.\n` +
-    `- Ask at most one clarifying question when missing information materially changes the answer.\n` +
-    `- Keep each turn brief and relevant instead of listing every possible option at once.\n` +
+    `CONVERSATION RULES:\n` +
+    `- Respond to what was actually said. Do not invent context.\n` +
+    `- Ask at most one question per response, only when it genuinely matters.\n` +
+    `- Keep responses appropriately short unless depth is called for.\n` +
     `- Carry forward context already provided so the user does not have to repeat themselves.`
-  );
-
-  sections.push(
-    `MODE TOGGLE:\n\n` +
-    `/play: Switch to Roleplay Mode (Apply all character and narrative logic).\n\n` +
-    `/chat: Resume Utility Mode (Helpful assistant, no persona/roleplay).`
   );
 
   return sections.join('\n\n');

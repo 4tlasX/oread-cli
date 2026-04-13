@@ -53,7 +53,7 @@ export default function InputBox({
       onPickerClose();
     } else if (key.return) {
       const selected = filteredCommands[Math.min(pickerIndex, filteredCommands.length - 1)];
-      if (selected) onPickerSelect(selected.name);
+      if (selected) onPickerSelect(selected);
     }
   }, { isActive: pickerOpen && filteredCommands.length > 0 && !isStreaming });
 

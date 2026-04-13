@@ -23,8 +23,16 @@ export function register(registry) {
 
       const lines = [];
 
+      // Sanitize session name: strip control chars/ANSI and markdown special chars
+      // before embedding in the document header.
+      const safeName = (session.name || 'session')
+        .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')   // ANSI CSI
+        .replace(/[\x00-\x1F\x7F]/g, '')           // control chars
+        .replace(/[#*_[\]()\\`|>]/g, '')            // markdown structural chars
+        .trim() || 'session';
+
       // Header
-      lines.push(`# ${session.name}`);
+      lines.push(`# ${safeName}`);
       lines.push(`*Session ID: ${session.id}*`);
       lines.push(`*Mode: ${session.mode}*`);
       lines.push(`*Exported: ${new Date().toLocaleString()}*`);
@@ -81,15 +89,28 @@ export function register(registry) {
       const markdown = lines.join('\n');
 
       // Write to file
-      const exportsDir = path.join(ROOT, 'data', 'exports');
+      const exportsDir = path.resolve(ROOT, 'data', 'exports');
       fs.mkdirSync(exportsDir, { recursive: true });
 
-      const rawName = args[0] ? path.basename(args[0]) : null;
-      const filename = rawName
-        ? (rawName.endsWith('.md') ? rawName : rawName + '.md')
-        : `${session.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.md`;
+      // Build filename: strip everything that isn't safe for a filename,
+      // then ensure the resolved path stays inside exportsDir.
+      let baseFilename;
+      if (args[0]) {
+        // User-supplied name: take basename, strip unsafe chars, enforce .md
+        baseFilename = path.basename(args[0])
+          .replace(/[^a-zA-Z0-9._-]/g, '-')
+          .replace(/\.md$/i, '') + '.md';
+      } else {
+        baseFilename = safeName.replace(/\s+/g, '-').toLowerCase().replace(/[^a-z0-9-]/g, '') + `-${Date.now()}.md`;
+      }
+      if (!baseFilename || baseFilename === '.md') baseFilename = `export-${Date.now()}.md`;
 
-      const filepath = path.join(exportsDir, filename);
+      const filepath = path.resolve(exportsDir, baseFilename);
+      // Defense-in-depth: confirm final path is still inside exportsDir.
+      if (!filepath.startsWith(exportsDir + path.sep) && filepath !== exportsDir) {
+        return 'Invalid filename.';
+      }
+
       fs.writeFileSync(filepath, markdown, 'utf-8');
 
       return `Exported to ${path.relative(ROOT, filepath)}`;

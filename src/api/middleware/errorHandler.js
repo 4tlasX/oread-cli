@@ -3,18 +3,13 @@
  */
 
 export function errorHandler(err, req, res, _next) {
-  const isDev = process.env.NODE_ENV !== 'production';
-
+  // Always log the full error server-side for debugging.
   console.error(`[api] ${req.method} ${req.path}:`, err.message);
 
   const status = err.statusCode || err.status || 500;
-  const body = {
-    success: false,
-    error: isDev ? err.message : genericMessage(status),
-  };
-  if (isDev && err.details) body.details = err.details;
-
-  res.status(status).json(body);
+  // Never send internal error details to the client — they can contain file
+  // paths, API keys, or other sensitive context. Use generic messages only.
+  res.status(status).json({ success: false, error: genericMessage(status) });
 }
 
 export function notFoundHandler(req, res) {

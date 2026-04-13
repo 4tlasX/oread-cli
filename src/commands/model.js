@@ -2,6 +2,7 @@
  * Model commands: /model, /models, /pull
  */
 import { listAllModels } from '../services/providers/index.js';
+import { updateUserWorldField } from '../world/worldManager.js';
 
 function getDefaultModel(settings) {
   if (settings?.general?.selectedModel) return settings.general.selectedModel;
@@ -38,6 +39,8 @@ export function register(registry) {
       if (args.length) {
         const model = args[0];
         context.settingsManager.set('general.selectedModel', model);
+        const templateId = context.settingsManager.get('meta.templateId');
+        if (templateId) updateUserWorldField(templateId, 'general.selectedModel', model);
         return `Model set to: ${model}`;
       }
       try {

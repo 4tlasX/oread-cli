@@ -6,6 +6,7 @@ import { processPostChat } from '../services/postChatProcessor.js';
 import { searchMessages, detectRecallTriggers } from '../services/memorySearch.js';
 import { getRelevantGlobalMemories } from '../services/globalMemory.js';
 import { buildSystemPrompt } from './promptBuilder.js';
+import { sanitizeChunk, scanForInjection, buildInjectionWarning } from '../services/responseGuard.js';
 
 const EXTERNAL_PROVIDERS = ['nomi', 'kindroid'];
 
@@ -175,9 +176,20 @@ export async function* runChatTurn({ userMessage, context }) {
 
   for await (const chunk of stream) {
     if (chunk.message?.content) {
-      assistantResponse += chunk.message.content;
-      yield chunk.message.content;
+      const safe = sanitizeChunk(chunk.message.content);
+      assistantResponse += safe;
+      yield safe;
     }
+  }
+
+  // Scan the full response for prompt-injection patterns. If found, append a
+  // visible warning so it surfaces in the UI and is saved to the DB — ensuring
+  // the user sees the flag and it isn't silently buried.
+  const { detected, findings } = scanForInjection(assistantResponse);
+  if (detected) {
+    const warning = buildInjectionWarning(findings);
+    assistantResponse += warning;
+    yield warning;
   }
 
   // Save assistant message

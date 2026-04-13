@@ -74,6 +74,9 @@ export function listWorlds() {
   return worlds;
 }
 
+/** Safe world ID: alphanumeric, hyphens, underscores only. No path components. */
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
 /**
  * Load a world's full JSON by ID.
  * Searches defaults, then user dir, then env dir.
@@ -81,12 +84,16 @@ export function listWorlds() {
  * @returns {Object|null}
  */
 export function loadWorld(id) {
+  if (!id || !SAFE_ID_RE.test(id)) return null;
+
   const searchDirs = [DEFAULTS_DIR, USER_DIR];
   const envDir = process.env.CHAT_TEMPLATES_DIR;
   if (envDir) searchDirs.push(envDir);
 
   for (const dir of searchDirs) {
-    const filePath = path.join(dir, `${id}.json`);
+    const filePath = path.resolve(dir, `${id}.json`);
+    // Ensure the resolved path stays inside the intended directory (defense-in-depth).
+    if (!filePath.startsWith(path.resolve(dir) + path.sep)) continue;
     if (fs.existsSync(filePath)) {
       try {
         return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -149,12 +156,47 @@ export function saveUserWorld(settings, name) {
 }
 
 /**
+ * Update a single field in a user world template by dot-separated key path.
+ * Only operates on user templates — silently skips defaults.
+ * @param {string} id - World template ID
+ * @param {string} keyPath - Dot-separated path into settings (e.g. 'general.selectedModel')
+ * @param {*} value
+ * @returns {boolean} - true if saved, false if not found or not a user template
+ */
+export function updateUserWorldField(id, keyPath, value) {
+  if (!id || !SAFE_ID_RE.test(id)) return false;
+  const filePath = path.resolve(USER_DIR, `${id}.json`);
+  if (!filePath.startsWith(path.resolve(USER_DIR) + path.sep)) return false;
+  if (!fs.existsSync(filePath)) return false;
+  try {
+    const world = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    if (!world.settings) world.settings = {};
+    const parts = keyPath.split('.');
+    let current = world.settings;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (current[parts[i]] == null || typeof current[parts[i]] !== 'object') {
+        current[parts[i]] = {};
+      }
+      current = current[parts[i]];
+    }
+    current[parts[parts.length - 1]] = value;
+    fs.writeFileSync(filePath, JSON.stringify(world, null, 2), 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Delete a user world template by id.
  * @param {string} id
  * @returns {boolean} - true if deleted, false if not found
  */
 export function deleteUserWorld(id) {
-  const filePath = path.join(USER_DIR, `${id}.json`);
+  if (!id || !SAFE_ID_RE.test(id)) return false;
+  const filePath = path.resolve(USER_DIR, `${id}.json`);
+  // Ensure path stays inside USER_DIR.
+  if (!filePath.startsWith(path.resolve(USER_DIR) + path.sep)) return false;
   if (!fs.existsSync(filePath)) return false;
   fs.unlinkSync(filePath);
   return true;

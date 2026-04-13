@@ -33,8 +33,10 @@ router.get('/global', asyncHandler(async (req, res) => {
 router.get('/search', asyncHandler(async (req, res) => {
   const { q, limit = '20' } = req.query;
   if (!q) return res.status(400).json({ success: false, error: 'q parameter required' });
+  if (q.length > 500) return res.status(400).json({ success: false, error: 'q too long (max 500 chars)' });
 
-  const sanitized = q.replace(/['"]/g, '').trim();
+  // Wrap each token in double-quotes to suppress FTS5 operator interpretation.
+  const sanitized = q.replace(/"/g, '').trim().split(/\s+/).filter(Boolean).map(t => `"${t}"`).join(' ');
   const results = await database.all(
     `SELECT gm.* FROM global_memory_fts fts
      JOIN global_memory gm ON gm.rowid = fts.rowid
@@ -49,6 +51,9 @@ router.get('/search', asyncHandler(async (req, res) => {
 router.put('/global/:id', asyncHandler(async (req, res) => {
   const { content } = req.body;
   if (!content) return res.status(400).json({ success: false, error: 'content required' });
+  if (typeof content !== 'string' || content.length > 5000) {
+    return res.status(400).json({ success: false, error: 'content must be a string ≤ 5000 characters' });
+  }
 
   await database.run(
     'UPDATE global_memory SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
