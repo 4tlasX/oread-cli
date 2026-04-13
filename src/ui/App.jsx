@@ -176,6 +176,46 @@ export default function App() {
       return;
     }
 
+    // Detect external providers (Kindroid, Nomi) which respond synchronously and
+    // manage their own memory. They need different handling:
+    //   - No streaming preview: showing the full response at once then clearing it
+    //     inflates log-update's previousLineCount, causing eraseLines() to
+    //     overshoot on the next render and draw the input at the top of the screen.
+    //   - Both messages added in one setMessages call: prevents Ink's Static
+    //     component from re-rendering the user message as a duplicate (its
+    //     useLayoutEffect can't update the committed index before the fast
+    //     assistant message arrives in the same React batch).
+    const currentModel = context.settingsManager?.getAll()?.general?.selectedModel || '';
+    const isExternalProvider = currentModel.startsWith('kindroid-') || currentModel.startsWith('nomi-');
+
+    if (isExternalProvider) {
+      setIsStreaming(true);
+      try {
+        let accumulated = '';
+        for await (const chunk of runChatTurn({ userMessage: trimmed, context })) {
+          accumulated += chunk;
+        }
+        setMessages(prev => [...prev,
+          { role: 'user', content: trimmed },
+          { role: 'assistant', content: accumulated },
+        ]);
+      } catch (err) {
+        setMessages(prev => [...prev,
+          { role: 'user', content: trimmed },
+          { role: 'assistant', content: `[Error: ${err.message}]` },
+        ]);
+      } finally {
+        setIsStreaming(false);
+        await refreshStatus();
+      }
+      return;
+    }
+
+    // Standard streaming providers (Ollama, Anthropic, OpenAI, etc.).
+    // Show user message immediately, then stream the response live.
+    // The many render cycles during streaming give Ink's Static component time
+    // to commit the user message (via useLayoutEffect) before the assistant
+    // message is added — no duplicate, no setImmediate needed.
     setMessages(prev => [...prev, { role: 'user', content: trimmed }]);
     setIsStreaming(true);
     setStreamingContent('');

@@ -67,6 +67,32 @@ export async function* runChatTurn({ userMessage, context }) {
     timestamp: new Date().toISOString()
   });
 
+  const isExternalProvider = EXTERNAL_PROVIDERS.includes(detectProvider(model));
+
+  // External providers (Nomi, Kindroid) manage their own memory server-side.
+  // Send only the bare user message — no system prompt, no history, no context block.
+  if (isExternalProvider) {
+    const stream = providerChat(model, [{ role: 'user', content: userMessage }], {});
+
+    let assistantResponse = '';
+
+    for await (const chunk of stream) {
+      if (chunk.message?.content) {
+        const safe = sanitizeChunk(chunk.message.content);
+        assistantResponse += safe;
+        yield safe;
+      }
+    }
+
+    await saveMessageToSession(sessionId, {
+      role: 'assistant',
+      content: assistantResponse,
+      timestamp: new Date().toISOString()
+    });
+
+    return;
+  }
+
   // Load all messages from DB
   const dbMessages = await database.all(
     `SELECT role, content, pinned FROM messages WHERE session_id = ? ORDER BY timestamp ASC`,
@@ -92,67 +118,59 @@ export async function* runChatTurn({ userMessage, context }) {
 
   const contextBudget = settings?.general?.contextBudget || 4096;
   const mode = settings?.mode || 'normal';
-  const isExternalProvider = EXTERNAL_PROVIDERS.includes(detectProvider(model));
 
-  // Build system prompt
   const isFirstMessage = dbMessages.filter(m => m.role === 'user').length === 1;
-  const systemPrompt = isExternalProvider
-    ? null // External providers (Nomi/Kindroid) have their own system prompts
-    : buildSystemPrompt(settings, mode, isFirstMessage);
+  const systemPrompt = buildSystemPrompt(settings, mode, isFirstMessage);
 
-  // Check for recall triggers (skip for external providers - they handle their own memory)
+  // Check for recall triggers
   let recalledMessages = [];
-  if (!isExternalProvider) {
-    const { needsRecall, searchTerms } = detectRecallTriggers(userMessage);
-    if (needsRecall) {
-      for (const term of searchTerms) {
-        const results = await searchMessages(sessionId, term, { limit: 3 });
-        recalledMessages.push(...results);
-      }
-      // Deduplicate
-      const seen = new Set();
-      recalledMessages = recalledMessages.filter(m => {
-        const key = m.content.substring(0, 100);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+  const { needsRecall, searchTerms } = detectRecallTriggers(userMessage);
+  if (needsRecall) {
+    for (const term of searchTerms) {
+      const results = await searchMessages(sessionId, term, { limit: 3 });
+      recalledMessages.push(...results);
     }
+    // Deduplicate
+    const seen = new Set();
+    recalledMessages = recalledMessages.filter(m => {
+      const key = m.content.substring(0, 100);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
-  // Load cross-session global memory if enabled (skip for external providers)
+  // Load cross-session global memory if enabled
   let globalContext = null;
-  if (!isExternalProvider) {
-    const crossSessionEnabled = settings?.general?.crossSessionMemory !== false;
-    if (crossSessionEnabled) {
-      const characterName = settings?.roleplay?.character?.name || settings?.roleplay?._loadedCharacters?.[0]?.name;
-      const userName = settings?.userPersona?.name;
-      if (characterName && userName) {
-        try {
-          const { memories, relationship } = await getRelevantGlobalMemories(
-            characterName, userName, userMessage, { limit: 10 }
-          );
-          if (relationship || memories.length > 0) {
-            globalContext = { memories, relationship, userName };
-          }
-        } catch (err) {
-          console.error('Global memory load error:', err);
+  const crossSessionEnabled = settings?.general?.crossSessionMemory !== false;
+  if (crossSessionEnabled) {
+    const characterName = settings?.roleplay?.character?.name || settings?.roleplay?._loadedCharacters?.[0]?.name;
+    const userName = settings?.userPersona?.name;
+    if (characterName && userName) {
+      try {
+        const { memories, relationship } = await getRelevantGlobalMemories(
+          characterName, userName, userMessage, { limit: 10 }
+        );
+        if (relationship || memories.length > 0) {
+          globalContext = { memories, relationship, userName };
         }
+      } catch (err) {
+        console.error('Global memory load error:', err);
       }
     }
   }
 
-  // Run context window selection (skip complex context for external providers)
+  // Run context window selection
   const { messages: windowedMessages, contextBlock } = selectMessages({
     messages: dbMessages.map(m => ({ role: m.role, content: m.content, pinned: !!m.pinned })),
     systemPrompt: systemPrompt || '',
-    storyNotes: isExternalProvider ? storyNotes : storyNotes,
-    extractedFacts: isExternalProvider ? [] : extractedFactsData,
+    storyNotes,
+    extractedFacts: extractedFactsData,
     contextBudget,
-    rollingSummary: isExternalProvider ? '' : rollingSummary,
-    worldState: isExternalProvider ? {} : worldStateData,
-    worldStateHistory: isExternalProvider ? [] : worldStateHistory,
-    characterStances: isExternalProvider ? {} : characterStancesData,
+    rollingSummary,
+    worldState: worldStateData,
+    worldStateHistory,
+    characterStances: characterStancesData,
     recalledMessages,
     globalContext,
     mode
