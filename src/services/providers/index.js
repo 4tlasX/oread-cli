@@ -6,6 +6,7 @@
  *   gemini-*              → Gemini
  *   nomi-*                → Nomi.ai
  *   kindroid-*            → Kindroid.ai
+ *   @cf/*                 → Cloudflare Workers AI
  *   everything else       → Ollama (local)
  */
 import * as ollamaProvider from './ollama.js';
@@ -14,6 +15,7 @@ import * as openaiProvider from './openai.js';
 import * as geminiProvider from './gemini.js';
 import * as nomiProvider from './nomi.js';
 import * as kindroidProvider from './kindroid.js';
+import * as cloudflareProvider from './cloudflare.js';
 import { getKey } from '../keyStore.js';
 
 const ENV_KEY = {
@@ -32,6 +34,7 @@ function detectProvider(model) {
   if (m.startsWith('gemini-')) return 'gemini';
   if (m.startsWith('nomi-')) return 'nomi';
   if (m.startsWith('kindroid-')) return 'kindroid';
+  if (m.startsWith('@cf/')) return 'cloudflare';
   return 'ollama';
 }
 
@@ -45,6 +48,14 @@ function detectProvider(model) {
  * @yields {{ message: { content: string } }}
  */
 async function resolveKey(provider) {
+  if (provider === 'cloudflare') {
+    const stored = await getKey('cloudflare');
+    if (stored) return stored;
+    const accountId = process.env.CF_ACCOUNT_ID;
+    const token = process.env.CF_API_TOKEN;
+    if (accountId && token) return `${accountId}:${token}`;
+    return null;
+  }
   return (await getKey(provider)) || process.env[ENV_KEY[provider]] || null;
 }
 
@@ -71,6 +82,10 @@ export async function* chat(model, messages, options = {}) {
     const apiKey = await resolveKey('kindroid');
     if (!apiKey) throw new Error('No Kindroid.ai API key found. Set KINDROID_API_KEY in .env or use /key set kindroid <key>');
     yield* kindroidProvider.chat(model, messages, options, apiKey);
+  } else if (provider === 'cloudflare') {
+    const apiKey = await resolveKey('cloudflare');
+    if (!apiKey) throw new Error('No Cloudflare credentials found. Set CF_ACCOUNT_ID + CF_API_TOKEN in .env or use /key set cloudflare <accountId>:<apiToken>');
+    yield* cloudflareProvider.chat(model, messages, options, apiKey);
   } else {
     yield* ollamaProvider.chat(model, messages, options);
   }
@@ -139,6 +154,13 @@ export async function listAllModels() {
   const kindroidKey = await resolveKey('kindroid');
   if (kindroidKey) {
     const models = await kindroidProvider.listModels(kindroidKey);
+    results.push(...models);
+  }
+
+  // Cloudflare — if key is set (DB or env)
+  const cloudflareKey = await resolveKey('cloudflare');
+  if (cloudflareKey) {
+    const models = await cloudflareProvider.listModels(cloudflareKey);
     results.push(...models);
   }
 

@@ -3,7 +3,7 @@
  */
 import { setKey, removeKey, listConfiguredProviders } from '../services/keyStore.js';
 
-const SUPPORTED_PROVIDERS = ['anthropic', 'openai', 'gemini', 'groq', 'nomi', 'kindroid'];
+const SUPPORTED_PROVIDERS = ['anthropic', 'openai', 'gemini', 'groq', 'nomi', 'kindroid', 'cloudflare'];
 
 export function register(registry) {
   registry.register({
@@ -31,6 +31,7 @@ export function register(registry) {
           '  /key set gemini ...',
           '  /key set nomi <uuid-api-key>',
           '  /key set kindroid <kn_...-api-key>',
+          '  /key set cloudflare <accountId>:<apiToken>',
         ].join('\n');
         }
         const lines = ['Configured providers:\n'];

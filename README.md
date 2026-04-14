@@ -1,6 +1,6 @@
 # oread-cli
 
-Local-first LLM interface with a Claude Code-style terminal UI. Chat with Ollama models or cloud providers (Anthropic, OpenAI) through a persistent, memory-aware session engine.
+Local-first LLM interface with a Claude Code-style terminal UI. Chat with Ollama models or cloud providers (Anthropic, OpenAI, Cloudflare Workers AI) through a persistent, memory-aware session engine.
 
 All memory is stored locally in SQLite. Cloud providers are opt-in. Nothing leaves your machine by default.
 
@@ -82,6 +82,7 @@ oread --api --port=4000      # Custom port
 | `/key set gemini <key>` | Store Gemini API key (encrypted) |
 | `/key set nomi <key>` | Store Nomi.ai API key (encrypted) |
 | `/key set kindroid <key>` | Store Kindroid.ai API key (encrypted) |
+| `/key set cloudflare <accountId>:<apiToken>` | Store Cloudflare credentials (encrypted) |
 | `/key list` | Show configured providers |
 | `/key remove <provider>` | Delete a key |
 
@@ -115,12 +116,13 @@ Role labels align to a fixed column. Status bar sits below the input — world, 
 Model names are routed automatically by prefix:
 
 ```
-claude-*          → Anthropic   (ANTHROPIC_API_KEY or /key set anthropic)
-gpt-*, o1-*, o3-* → OpenAI      (OPENAI_API_KEY or /key set openai)
-gemini-*          → Gemini      (GEMINI_API_KEY or /key set gemini)
-nomi-*            → Nomi.ai     (NOMI_API_KEY or /key set nomi)
-kindroid-*        → Kindroid.ai (KINDROID_API_KEY or /key set kindroid)
-anything else     → Ollama      (local, no key needed)
+claude-*          → Anthropic          (ANTHROPIC_API_KEY or /key set anthropic)
+gpt-*, o1-*, o3-* → OpenAI             (OPENAI_API_KEY or /key set openai)
+gemini-*          → Gemini             (GEMINI_API_KEY or /key set gemini)
+nomi-*            → Nomi.ai            (NOMI_API_KEY or /key set nomi)
+kindroid-*        → Kindroid.ai        (KINDROID_API_KEY or /key set kindroid)
+@cf/*             → Cloudflare Workers AI  (CF_ACCOUNT_ID + CF_API_TOKEN or /key set cloudflare)
+anything else     → Ollama             (local, no key needed)
 ```
 
 Switch mid-conversation with `/model <name>` — world, memory, and session stay the same.
@@ -202,6 +204,10 @@ OPENAI_API_KEY=
 GEMINI_API_KEY=
 NOMI_API_KEY=
 KINDROID_API_KEY=
+
+# Cloudflare Workers AI (both required as env var alternative)
+CF_ACCOUNT_ID=                  # Cloudflare account ID
+CF_API_TOKEN=                   # Cloudflare API token (Workers AI: Run permission)
 
 # Character/model IDs for companion providers
 NOMI_MODEL=                     # Nomi companion UUID

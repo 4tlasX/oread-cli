@@ -7,7 +7,7 @@ Local-first LLM terminal interface. Ink-based terminal UI (Claude Code style), O
 - **Runtime**: Node.js (ES Modules, `"type": "module"`)
 - **UI**: Ink 5 (React for terminals), ink-text-input
 - **Build**: esbuild (JSX compilation + bundling → `dist/oread.js`)
-- **AI**: Ollama (local default), Anthropic, OpenAI (opt-in via `/key set`)
+- **AI**: Ollama (local default), Anthropic, OpenAI, Cloudflare Workers AI (opt-in via `/key set`)
 - **Storage**: SQLite (WAL mode, FTS5) via `sqlite` + `sqlite3`
 - **Entry**: `bin/oread.js` → `dist/oread.js` (linked via `npm link`)
 
@@ -50,12 +50,13 @@ src/
     worldSnapshotService.js  createWorldSnapshot(), getWorldSnapshot(), seedWorldState()
     keyStore.js           AES-256-GCM encrypted API key storage in SQLite api_keys table
     providers/
-      index.js            Routes by model prefix: claude-* → Anthropic, gpt-* → OpenAI, nomi-* → Nomi.ai, kindroid-* → Kindroid.ai, else Ollama
+      index.js            Routes by model prefix: claude-* → Anthropic, gpt-* → OpenAI, nomi-* → Nomi.ai, kindroid-* → Kindroid.ai, @cf/* → Cloudflare, else Ollama
       ollama.js           Adapter — wraps OllamaService.chat()
       anthropic.js        Adapter — @anthropic-ai/sdk streaming
       openai.js           Adapter — openai npm streaming
       nomi.js             Adapter — Nomi.ai REST API (nomi-* prefix, NOMI_API_KEY / NOMI_MODEL)
       kindroid.js         Adapter — Kindroid.ai REST API (kindroid-* prefix, KINDROID_API_KEY / KINDROID_MODEL)
+      cloudflare.js       Adapter — Cloudflare Workers AI SSE streaming (@cf/* prefix, CF_ACCOUNT_ID / CF_API_TOKEN)
     responseGuard.js      sanitizeChunk() (per-chunk ANSI/escape strip) + detectInjection() (full-response prompt-injection scan)
   world/
     worldManager.js       listWorlds(), loadWorld(id), saveUserWorld(), deleteUserWorld(), getActive(), setActive(), updateUserWorldField(id, keyPath, value) — targeted field update without full rewrite; stale placeholder model IDs are sanitized on load
@@ -240,7 +241,9 @@ Cloud provider keys are resolved in this order:
 2. Environment variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `NOMI_API_KEY`, `KINDROID_API_KEY`)
 3. Error — no key found
 
-Supported providers: `anthropic`, `openai`, `gemini`, `groq`, `nomi`, `kindroid`.
+Supported providers: `anthropic`, `openai`, `gemini`, `groq`, `nomi`, `kindroid`, `cloudflare`.
+
+**Cloudflare is a special case** — it requires both an account ID and an API token. Store them combined: `/key set cloudflare <accountId>:<apiToken>`. Env var fallback uses two vars: `CF_ACCOUNT_ID` + `CF_API_TOKEN` (both must be set). The `resolveKey('cloudflare')` path in `providers/index.js` handles this split.
 
 This logic lives in `src/services/providers/index.js` `resolveKey()`. Both `chat()` and `listAllModels()` use it.
 
@@ -261,6 +264,7 @@ Keys are validated before storage: printable ASCII only, 8–512 characters.
 - **API binds localhost only.** `127.0.0.1` — not accessible from the network without a reverse proxy.
 - **Legacy event format.** World state `ongoingEvents` may contain plain strings or `{ text, state }` objects. The `typeof` guard in `contextWindow.js` handles both — copy it exactly if reimplementing.
 - **responseGuard in chatPipeline.** `sanitizeChunk()` is called on every streamed chunk before it reaches the UI. `detectInjection()` is called on the full assembled response before it is saved. Both live in `src/services/responseGuard.js`.
+- **Cloudflare credential format.** The keyStore holds one string per provider; Cloudflare needs two values so they are stored as `accountId:apiToken` (split on the first `:`). The env var fallback requires *both* `CF_ACCOUNT_ID` and `CF_API_TOKEN` to be set. Model names use the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct-fast`); the model list is a curated hardcoded set — Cloudflare has hundreds of models but no concise endpoint.
 - **Nomi / Kindroid model IDs.** These providers don't have named models — the "model name" (`nomi-<uuid>` or `kindroid-<id>`) encodes the companion ID. If no explicit model name is given, the adapter falls back to `NOMI_MODEL` / `KINDROID_MODEL` env vars. Stale `nomi-` / `kindroid-` IDs in `active.json` are stripped on load if no matching key is configured.
 - **Model auto-saved to user world.** When the user switches model via `/model`, `updateUserWorldField()` writes `settings.general.selectedModel` back into the active user world's JSON file so the choice persists across restarts. This only fires for user worlds (not built-in defaults).
 - **SelectOverlay and InputBox coexist.** Unlike the previous design, `InputBox` is always rendered. `SelectOverlay` and `PullProgress` render on top of it (not instead of it). This keeps the terminal layout stable during picker navigation.
