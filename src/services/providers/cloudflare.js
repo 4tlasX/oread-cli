@@ -17,14 +17,32 @@ function parseKey(apiKey) {
   return { accountId: apiKey.slice(0, idx), token: apiKey.slice(idx + 1) };
 }
 
+// Cloudflare requires strictly alternating user/assistant roles.
+// Drop system-role gap markers (informational only) and merge any
+// consecutive same-role messages that slip through after context selection.
+function enforceAlternation(messages) {
+  const filtered = messages.filter(m => m.role === 'user' || m.role === 'assistant');
+  const result = [];
+  for (const msg of filtered) {
+    if (result.length > 0 && result[result.length - 1].role === msg.role) {
+      result[result.length - 1].content += '\n\n' + msg.content;
+    } else {
+      result.push({ ...msg });
+    }
+  }
+  return result;
+}
+
 export async function* chat(model, messages, options = {}, apiKey) {
   const { accountId, token } = parseKey(apiKey);
 
-  // Build OpenAI-compatible message array (Cloudflare accepts this format)
-  const cfMessages = messages.map(m => ({
-    role: m.role,
-    content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || '',
-  }));
+  // Build OpenAI-compatible message array and enforce alternation
+  const cfMessages = enforceAlternation(
+    messages.map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || '',
+    }))
+  );
 
   const body = {
     messages: cfMessages,
