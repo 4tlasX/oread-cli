@@ -213,12 +213,13 @@ export default function App() {
 
     // Standard streaming providers (Ollama, Anthropic, OpenAI, etc.).
     // Show user message immediately, then stream the response live.
-    // The many render cycles during streaming give Ink's Static component time
-    // to commit the user message (via useLayoutEffect) before the assistant
-    // message is added — no duplicate, no setImmediate needed.
     setMessages(prev => [...prev, { role: 'user', content: trimmed }]);
     setIsStreaming(true);
     setStreamingContent('');
+
+    // Yield to the event loop so Ink flushes the user message to the terminal
+    // before the pipeline starts consuming microtasks with DB calls.
+    await new Promise(resolve => setImmediate(resolve));
 
     try {
       let accumulated = '';

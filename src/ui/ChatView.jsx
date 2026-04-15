@@ -26,11 +26,11 @@ export default function ChatView({ messages = [], streamingContent, isStreaming 
         }}
       </Static>
 
-      {isStreaming && streamingContent && (
+      {isStreaming && (
         <Box marginY={1}>
           <Text wrap="wrap">
             <Text color={C.teal}>{'● '}</Text>
-            {streamingContent}
+            {streamingContent || <Text dimColor>...</Text>}
           </Text>
         </Box>
       )}
