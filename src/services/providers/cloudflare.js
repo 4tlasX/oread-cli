@@ -14,18 +14,23 @@ export const name = 'cloudflare';
 function parseKey(apiKey) {
   const idx = apiKey.indexOf(':');
   if (idx === -1) throw new Error('Cloudflare key must be in format accountId:apiToken');
-  return { accountId: apiKey.slice(0, idx), token: apiKey.slice(idx + 1) };
+  return { accountId: apiKey.slice(0, idx).trim(), token: apiKey.slice(idx + 1).trim() };
 }
 
 // Cloudflare requires strictly alternating user/assistant roles.
-// Drop system-role gap markers (informational only) and merge any
-// consecutive same-role messages that slip through after context selection.
+// Preserve a leading system message, drop other system-role gap markers,
+// and merge any consecutive same-role messages that slip through.
 function enforceAlternation(messages) {
-  const filtered = messages.filter(m => m.role === 'user' || m.role === 'assistant');
   const result = [];
-  for (const msg of filtered) {
-    if (result.length > 0 && result[result.length - 1].role === msg.role) {
-      result[result.length - 1].content += '\n\n' + msg.content;
+  // Keep system message at position 0 if present
+  if (messages[0]?.role === 'system') {
+    result.push({ ...messages[0] });
+  }
+  const conversational = messages.filter(m => m.role === 'user' || m.role === 'assistant');
+  for (const msg of conversational) {
+    const last = result[result.length - 1];
+    if (last && last.role === msg.role) {
+      last.content += '\n\n' + msg.content;
     } else {
       result.push({ ...msg });
     }
@@ -36,13 +41,17 @@ function enforceAlternation(messages) {
 export async function* chat(model, messages, options = {}, apiKey) {
   const { accountId, token } = parseKey(apiKey);
 
-  // Build OpenAI-compatible message array and enforce alternation
-  const cfMessages = enforceAlternation(
-    messages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || '',
-    }))
-  );
+  // Build message array — prepend system prompt if provided, then enforce alternation
+  const rawMessages = [];
+  if (options.systemPrompt) {
+    rawMessages.push({ role: 'system', content: options.systemPrompt });
+  }
+  rawMessages.push(...messages.map(m => ({
+    role: m.role,
+    content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || '',
+  })));
+
+  const cfMessages = enforceAlternation(rawMessages);
 
   const body = {
     messages: cfMessages,
@@ -89,15 +98,13 @@ export async function* chat(model, messages, options = {}, apiKey) {
   }
 }
 
-// Curated list of popular Cloudflare Workers AI text-generation models
+// Curated list of Cloudflare Workers AI text-generation models
 const CLOUDFLARE_MODELS = [
   { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (fast)' },
   { id: '@cf/meta/llama-3.1-8b-instruct-fast', name: 'Llama 3.1 8B (fast)' },
   { id: '@cf/meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
   { id: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B' },
-  { id: '@cf/meta/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision' },
-  { id: '@cf/mistral/mistral-7b-instruct-v0.2', name: 'Mistral 7B v0.2' },
-  { id: '@cf/google/gemma-3-12b-it', name: 'Gemma 3 12B' },
+  { id: '@cf/mistral/mistral-7b-instruct-v0.1', name: 'Mistral 7B' },
   { id: '@cf/qwen/qwen2.5-72b-instruct', name: 'Qwen 2.5 72B' },
   { id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill 32B' },
 ];

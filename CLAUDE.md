@@ -56,7 +56,10 @@ src/
       openai.js           Adapter — openai npm streaming
       nomi.js             Adapter — Nomi.ai REST API (nomi-* prefix, NOMI_API_KEY / NOMI_MODEL)
       kindroid.js         Adapter — Kindroid.ai REST API (kindroid-* prefix, KINDROID_API_KEY / KINDROID_MODEL)
-      cloudflare.js       Adapter — Cloudflare Workers AI SSE streaming (@cf/* prefix, CF_ACCOUNT_ID / CF_API_TOKEN)
+      cloudflare.js       Adapter — Cloudflare Workers AI SSE streaming (@cf/* prefix, CF_ACCOUNT_ID / CF_API_TOKEN); enforceAlternation() merges consecutive same-role messages and preserves system prompt
+      shapefirst.js       Shape-First beta provider — resolveShapefirstKey() (CF env vars auto-resolved), summarizeWithGateway() (native /ai/run/{model} endpoint); strips <think> blocks from reasoning models
+    chainStore.js         storeChain(), getRelevantChains() keyword LIKE match, getChainsBySession()
+    chainExtractor.js     runChainSummary() — fetches last 20 msgs + 3 prior chains, calls gateway, stores result
     responseGuard.js      sanitizeChunk() (per-chunk ANSI/escape strip) + detectInjection() (full-response prompt-injection scan)
   world/
     worldManager.js       listWorlds(), loadWorld(id), saveUserWorld(), deleteUserWorld(), getActive(), setActive(), updateUserWorldField(id, keyPath, value) — targeted field update without full rewrite; stale placeholder model IDs are sanitized on load
@@ -81,7 +84,8 @@ src/
     world.js              /worlds — SelectOverlay picker; /world [id] — show active or load world + create session + show recent
     model.js              /model — SelectOverlay picker + lists all providers grouped; /model <name> — switch + auto-saves to user world JSON; /models — alias; /pull <name-or-hf-url> — download
     session.js            /sessions — SelectOverlay picker; /session [id-or-name] — show or switch; /new [name] — create
-    memory.js             /memory [global], /forget, /search, /pin, /unpin
+    memory.js             /memory [chains|global], /forget, /search, /pin, /unpin
+    summarize.js          /summarize — Shape-First manual trigger; checks enabled flag + credentials before running
     notes.js              /notes [set|clear]
     settings.js           /settings [key], /set <key> <value>
     export.js             /export [filename] → data/exports/
@@ -144,6 +148,10 @@ world_snapshots   id, template_id, character_name, source_session_id, world_stat
                   key_locations, key_characters, key_events
 
 api_keys          provider (PK), encrypted_key, iv, auth_tag (AES-256-GCM)
+
+logic_chains      id, session_id (FK), turn INTEGER, chain_text TEXT, reason TEXT ('periodic'|'significant'|'manual'),
+                  created_at DATETIME
+                  INDEX: idx_logic_chains_session (session_id, turn DESC)
 ```
 
 ## Chat pipeline flow
@@ -170,6 +178,7 @@ User input → handleSubmit (App.jsx)
           → stanceExtractor (regex, roleplay only)
           → debateExtractor (Ollama, every 10 turns)
           → promoteToGlobalMemory (if crossSessionMemory)
+          → runChainSummary (if shapeFirstMemory=true, every 7 turns or significant world state change)
 ```
 
 ## Context window priorities
@@ -196,6 +205,7 @@ general.contextBudget             integer (tokens)
 general.autoSummarize             true | false
 general.crossSessionMemory        true | false
 general.webSearch                 true | false
+general.shapeFirstMemory          true | false (default false — opt-in beta; requires CF_ACCOUNT_ID + CF_API_TOKEN)
 roleplay.world.narratorVoice      'companion' | 'omniscient' | 'third_person_limited' | ...
 userPersona.name                  string
 ```

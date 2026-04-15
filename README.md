@@ -59,10 +59,12 @@ oread --api --port=4000      # Custom port
 |---|---|
 | `/memory` | Show session facts, summary, world state, stances |
 | `/memory global` | Show cross-session global memory |
+| `/memory chains` | Show Shape-First reasoning chain history (beta) |
 | `/forget <text>` | Remove matching facts from session |
 | `/search <query>` | Full-text search over session messages |
 | `/pin` | Pin the last assistant message (keeps it in context) |
 | `/unpin` | Unpin the last pinned message |
+| `/summarize` | Manually trigger a Shape-First reasoning chain summary (beta) |
 
 ### Notes & Settings
 | Command | Description |
@@ -153,6 +155,71 @@ data/templates/
 Drop any compatible JSON file into `data/templates/user/` to add a world.
 Set `CHAT_TEMPLATES_DIR=/path/to/other/defaults` to load worlds from another directory.
 
+## Shape-First Memory (Beta)
+
+> **Early beta — results may vary.** This is an experimental memory layer that we're testing alongside the existing memory systems. It works, but chain quality depends on the conversation and model. Give it a try and see how it feels.
+
+Shape-First stores **reasoning trajectory** rather than isolated facts. After every 7 turns (or when a significant event is detected), a Cloudflare Workers AI model reads the recent conversation and writes a compressed logic chain — capturing how one thought led to the next. These chains accumulate and are injected into context by keyword relevance, giving the AI a sense of its own reasoning history.
+
+When Shape-First is active, reasoning chains replace world state in the context window. World state continues tracking in the background — switching Shape-First off immediately restores it with no data loss.
+
+### Requirements
+
+- `CF_ACCOUNT_ID` and `CF_API_TOKEN` in your `.env` (same credentials used for `@cf/*` chat models)
+- Cloudflare Workers AI enabled on your account (free tier works)
+
+### Setup
+
+**1. Enable Shape-First**
+
+```
+/set general.shapeFirstMemory true
+```
+
+**2. Test it**
+
+```
+/summarize
+```
+
+That's it. Shape-First uses your existing Cloudflare credentials automatically. If it can't reach the API or the model returns something unusable, it'll tell you — nothing breaks.
+
+To use a different Workers AI model:
+```bash
+SHAPEFIRST_MODEL=@cf/some/other-model
+```
+
+### Advanced: custom gateway
+
+To route through a specific Cloudflare AI Gateway or a different provider:
+```bash
+/key set shapefirst <gatewayUrl>|<apiKey>|<model>
+```
+
+### How it triggers
+
+| Trigger | When |
+|---|---|
+| Periodic | Every 7 turns automatically |
+| Significant event | When world state detects a new discovery, decision, or ongoing event |
+| Manual | `/summarize` at any time |
+
+### Commands
+
+```bash
+/set general.shapeFirstMemory true   # enable (disabled by default)
+/summarize                           # trigger a chain summary now
+/memory chains                       # view chain history for this session
+```
+
+### Disable
+
+```bash
+/set general.shapeFirstMemory false
+```
+
+---
+
 ## API
 
 When running with `--api`, the server exposes:
@@ -212,6 +279,9 @@ CF_API_TOKEN=                   # Cloudflare API token (Workers AI: Run permissi
 # Character/model IDs for companion providers
 NOMI_MODEL=                     # Nomi companion UUID
 KINDROID_MODEL=                 # Kindroid AI ID
+
+# Shape-First Memory (beta) — uses CF_ACCOUNT_ID + CF_API_TOKEN automatically
+SHAPEFIRST_MODEL=@cf/deepseek-ai/deepseek-r1-distill-qwen-32b  # Optional: override the default Workers AI model
 ```
 
 Copy `.env.example` to `.env` to configure.
